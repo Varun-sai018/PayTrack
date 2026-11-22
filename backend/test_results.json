@@ -1,0 +1,227 @@
+{
+  "auth_health": {
+    "status": 200,
+    "body": "Auth Service is running",
+    "error": null
+  },
+  "auth_register": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "id": 1,
+        "userId": "64901c28-e097-40ae-a766-a532281ec5ed",
+        "email": "alice@example.com",
+        "fullName": "Alice Smith",
+        "role": "ROLE_CUSTOMER",
+        "active": true,
+        "createdAt": "2026-11-22T16:04:10.805713"
+      },
+      "message": "User registered successfully",
+      "timestamp": "2026-11-22T16:04:11.3281701"
+    },
+    "error": null
+  },
+  "auth_register_duplicate": {
+    "status": 500,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "An unexpected error occurred: Email already exists",
+      "timestamp": "2026-11-22T16:04:11.3710557"
+    },
+    "error": "HTTPError 500"
+  },
+  "auth_login_bad": {
+    "status": 500,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "An unexpected error occurred: Handler dispatch failed: java.lang.StackOverflowError",
+      "timestamp": "2026-11-22T16:04:11.5278257"
+    },
+    "error": "HTTPError 500"
+  },
+  "auth_login_good": {
+    "status": 500,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "An unexpected error occurred: Handler dispatch failed: java.lang.StackOverflowError",
+      "timestamp": "2026-11-22T16:04:11.6253867"
+    },
+    "error": "HTTPError 500"
+  },
+  "auth_me": {
+    "status": 500,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "An unexpected error occurred: User not found",
+      "timestamp": "2026-11-22T16:04:11.6885255"
+    },
+    "error": "HTTPError 500"
+  },
+  "wallet_me_check": {
+    "status": 404,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Wallet not found for user: null",
+      "timestamp": "2026-11-22T16:04:12.4882707"
+    },
+    "error": "HTTPError 404"
+  },
+  "wallet_create": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "id": 1,
+        "userId": "user-test-1",
+        "balance": 0,
+        "currency": "USD",
+        "createdAt": "2026-11-22T16:04:12.6870013",
+        "updatedAt": "2026-11-22T16:04:12.6870013"
+      },
+      "message": "Wallet created successfully",
+      "timestamp": "2026-11-22T16:04:12.8199636"
+    },
+    "error": null
+  },
+  "wallet_credit": {
+    "status": 404,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Wallet not found for user: null",
+      "timestamp": "2026-11-22T16:04:12.8767352"
+    },
+    "error": "HTTPError 404"
+  },
+  "wallet_me_after_credit": {
+    "status": 404,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Wallet not found for user: null",
+      "timestamp": "2026-11-22T16:04:12.9223798"
+    },
+    "error": "HTTPError 404"
+  },
+  "wallet_debit": {
+    "status": 404,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Wallet not found for user: null",
+      "timestamp": "2026-11-22T16:04:12.9856941"
+    },
+    "error": "HTTPError 404"
+  },
+  "wallet_debit_over": {
+    "status": 404,
+    "body": {
+      "success": false,
+      "data": null,
+      "message": "Wallet not found for user: null",
+      "timestamp": "2026-11-22T16:04:13.0197869"
+    },
+    "error": "HTTPError 404"
+  },
+  "transaction_create_debit": {
+    "status": null,
+    "body": null,
+    "error": "timed out"
+  },
+  "transaction_get_all": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": [],
+      "message": "Transactions retrieved successfully",
+      "timestamp": "2026-11-22T16:04:27.3549666"
+    },
+    "error": null
+  },
+  "transaction_get_by_wallet": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": [],
+      "message": "Transactions retrieved successfully",
+      "timestamp": "2026-11-22T16:04:28.8037729"
+    },
+    "error": null
+  },
+  "expense_create": {
+    "status": 403,
+    "body": "",
+    "error": "HTTPError 403"
+  },
+  "expense_get_all": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": [],
+      "message": "Expenses retrieved successfully",
+      "timestamp": "2026-11-22T16:04:31.0804503"
+    },
+    "error": null
+  },
+  "expense_get_by_wallet": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": [],
+      "message": "Expenses retrieved successfully",
+      "timestamp": "2026-11-22T16:04:31.2026296"
+    },
+    "error": null
+  },
+  "gateway_auth_register": {
+    "status": 401,
+    "body": {
+      "success": false,
+      "timestamp": "2026-11-22T16:04:31.2178485",
+      "status": 401,
+      "error": "Unauthorized",
+      "message": "Authorization Header Missing",
+      "path": "/api/auth/register"
+    },
+    "error": "HTTPError 401"
+  },
+  "gateway_auth_login": {
+    "status": 503,
+    "body": {
+      "data": null,
+      "success": false,
+      "message": "Auth Service is temporarily unavailable. Please try again later."
+    },
+    "error": "HTTPError 503"
+  },
+  "gateway_wallet_no_token": {
+    "status": 401,
+    "body": {
+      "success": false,
+      "timestamp": "2026-11-22T16:04:31.3613772",
+      "status": 401,
+      "error": "Unauthorized",
+      "message": "Authorization Header Missing",
+      "path": "/api/wallets/me"
+    },
+    "error": "HTTPError 401"
+  },
+  "gateway_wallet_with_token": {
+    "status": 401,
+    "body": {
+      "success": false,
+      "timestamp": "2026-11-22T16:04:31.3741785",
+      "status": 401,
+      "error": "Unauthorized",
+      "message": "Authorization Header Missing",
+      "path": "/api/wallets/me"
+    },
+    "error": "HTTPError 401"
+  }
+}
