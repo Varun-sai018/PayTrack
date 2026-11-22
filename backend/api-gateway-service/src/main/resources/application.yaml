@@ -1,0 +1,63 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: API-GATEWAY-SERVICE
+
+  cloud:
+    gateway:
+      routes:
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/auth/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: auth-service-cb
+                fallbackUri: forward:/fallback/auth
+        - id: wallet-service
+          uri: lb://wallet-service
+          predicates:
+            - Path=/api/wallets/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: wallet-service-cb
+                fallbackUri: forward:/fallback/wallet
+        - id: transaction-service
+          uri: lb://transaction-service
+          predicates:
+            - Path=/api/transactions/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: transaction-service-cb
+                fallbackUri: forward:/fallback/transaction
+        - id: expense-service
+          uri: lb://expense-service
+          predicates:
+            - Path=/api/expenses/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: expense-service-cb
+                fallbackUri: forward:/fallback/expense
+
+eureka:
+  instance:
+    hostname: eureka-service
+    prefer-ip-address: true
+  client:
+    service-url:
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka/}
+
+jwt:
+  secret: a2V5LWlzLWEtc2VjcmV0LWZvci1obGQtand0LXNpZ25pbmctdHdvLWh1bmRyZWQtYml0cy1sb25nLXNlY3JldA==
+  expiration: 86400000
+
+logging:
+  level:
+    com.paytrack.gateway: DEBUG
+    org.springframework.cloud.gateway: INFO
