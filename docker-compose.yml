@@ -1,0 +1,310 @@
+version: '3.8'
+
+networks:
+  paytrack-network:
+    driver: bridge
+
+volumes:
+  mysql_auth_data:
+  mysql_wallet_data:
+  mysql_transaction_data:
+  mysql_expense_data:
+  redis_data:
+  rabbitmq_data:
+
+services:
+  # ==========================================
+  # Infrastructure Services
+  # ==========================================
+
+  mysql-auth:
+    image: mysql:8.0
+    container_name: paytrack-mysql-auth
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: paytrack_auth
+      MYSQL_USER: paytrack
+      MYSQL_PASSWORD: paytrack123
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_auth_data:/var/lib/mysql
+    networks:
+      - paytrack-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  mysql-wallet:
+    image: mysql:8.0
+    container_name: paytrack-mysql-wallet
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: paytrack_wallet
+      MYSQL_USER: paytrack
+      MYSQL_PASSWORD: paytrack123
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_wallet_data:/var/lib/mysql
+    networks:
+      - paytrack-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  mysql-transaction:
+    image: mysql:8.0
+    container_name: paytrack-mysql-transaction
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: paytrack_transaction
+      MYSQL_USER: paytrack
+      MYSQL_PASSWORD: paytrack123
+    ports:
+      - "3309:3306"
+    volumes:
+      - mysql_transaction_data:/var/lib/mysql
+    networks:
+      - paytrack-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  mysql-expense:
+    image: mysql:8.0
+    container_name: paytrack-mysql-expense
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: paytrack_expense
+      MYSQL_USER: paytrack
+      MYSQL_PASSWORD: paytrack123
+    ports:
+      - "3310:3306"
+    volumes:
+      - mysql_expense_data:/var/lib/mysql
+    networks:
+      - paytrack-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: paytrack-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - paytrack-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: paytrack-rabbitmq
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - paytrack-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ==========================================
+  # Microservices
+  # ==========================================
+
+  eureka-service:
+    build:
+      context: .
+      dockerfile: backend/eureka-service/Dockerfile
+    container_name: paytrack-eureka
+    restart: always
+    depends_on:
+      - mysql-auth
+      - rabbitmq
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://localhost:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-auth:3306/paytrack_auth
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_DATA_REDIS_HOST: redis
+    networks:
+      - paytrack-network
+    ports:
+      - "8761:8761"
+
+  api-gateway-service:
+    build:
+      context: .
+      dockerfile: backend/api-gateway-service/Dockerfile
+    container_name: paytrack-gateway
+    restart: always
+    depends_on:
+      - eureka-service
+    environment:
+      SPRING_CLOUD_GATEWAY_ROUTES: |
+        routes:
+          - id: auth-service
+            uri: lb://auth-service
+            predicates:
+              - Path=/api/auth/**
+            filters:
+              - name: CircuitBreaker
+                args:
+                  name: auth-service-cb
+          - id: wallet-service
+            uri: lb://wallet-service
+            predicates:
+              - Path=/api/wallets/**
+            filters:
+              - name: CircuitBreaker
+                args:
+                  name: wallet-service-cb
+          - id: transaction-service
+            uri: lb://transaction-service
+            predicates:
+              - Path=/api/transactions/**
+            filters:
+              - name: CircuitBreaker
+                args:
+                  name: transaction-service-cb
+          - id: expense-service
+            uri: lb://expense-service
+            predicates:
+              - Path=/api/expenses/**
+            filters:
+              - name: CircuitBreaker
+                args:
+                  name: expense-service-cb
+      SPRING_CLOUD_DISCOVERY_CLIENT_REGISTERED: true
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_DATA_REDIS_HOST: redis
+    networks:
+      - paytrack-network
+    ports:
+      - "8080:8080"
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: backend/auth-service/Dockerfile
+    container_name: paytrack-auth
+    restart: always
+    depends_on:
+      - eureka-service
+      - mysql-auth
+      - rabbitmq
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-auth:3306/paytrack_auth
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_DATA_REDIS_HOST: redis
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka/
+    networks:
+      - paytrack-network
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  wallet-service:
+    build:
+      context: .
+      dockerfile: backend/wallet-service/Dockerfile
+    container_name: paytrack-wallet
+    restart: always
+    depends_on:
+      - eureka-service
+      - mysql-wallet
+      - rabbitmq
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-wallet:3306/paytrack_wallet
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_DATA_REDIS_HOST: redis
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka/
+    networks:
+      - paytrack-network
+    ports:
+      - "8082:8082"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  transaction-service:
+    build:
+      context: .
+      dockerfile: backend/transaction-service/Dockerfile
+    container_name: paytrack-transaction
+    restart: always
+    depends_on:
+      - eureka-service
+      - mysql-transaction
+      - rabbitmq
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-transaction:3306/paytrack_transaction
+      SPRING_RABBITMQ_HOST: rabbitmq
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka/
+    networks:
+      - paytrack-network
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  expense-service:
+    build:
+      context: .
+      dockerfile: backend/expense-service/Dockerfile
+    container_name: paytrack-expense
+    restart: always
+    depends_on:
+      - eureka-service
+      - mysql-expense
+      - rabbitmq
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-expense:3306/paytrack_expense
+      SPRING_RABBITMQ_HOST: rabbitmq
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka/
+    networks:
+      - paytrack-network
+    ports:
+      - "8084:8084"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
