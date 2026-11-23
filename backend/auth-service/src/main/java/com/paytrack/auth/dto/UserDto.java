@@ -18,6 +18,10 @@ public class UserDto {
     private String email;
     private String fullName;
     private String role;
+    private String phone;
+    private String upiId;
+    private String kycStatus;
+    private String accountStatus;
     private boolean active;
     private LocalDateTime createdAt;
 }

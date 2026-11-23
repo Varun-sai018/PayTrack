@@ -1,0 +1,677 @@
+{
+  "info": {
+    "name": "PayTrack API Collection",
+    "description": "Complete API collection for PayTrack microservices",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "paytrack-api-collection"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8089",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "idempotencyKey",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Test User\",\n  \"email\": \"test@example.com\",\n  \"password\": \"Password123\",\n  \"phone\": \"9876543210\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"Password123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "refresh"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Submit KYC",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/kyc",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "kyc"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"docType\": \"AADHAAR\",\n  \"docNumber\": \"123456789012\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get KYC Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/kyc/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "kyc", "status"]
+            }
+          }
+        },
+        {
+          "name": "Lookup User by UPI",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/users/lookup?upiId=test.user@paytrack",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "users", "lookup"],
+              "query": [
+                {
+                  "key": "upiId",
+                  "value": "test.user@paytrack"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Wallet",
+      "item": [
+        {
+          "name": "Get My Wallet",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/wallets/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallets", "me"]
+            }
+          }
+        },
+        {
+          "name": "Get Wallet Statement",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/wallets/me/statement?page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallets", "me", "statement"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Topup Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallets/topup/orders?amount=500",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallets", "topup", "orders"],
+              "query": [
+                {
+                  "key": "amount",
+                  "value": "500"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Verify Topup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallets/topup/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "wallets", "topup", "verify"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"ORDER123\",\n  \"paymentId\": \"PAY123\",\n  \"signature\": \"signature\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Sandbox Pay (Dev Only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/gateway-sandbox/pay",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "gateway-sandbox", "pay"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"ORDER123\",\n  \"method\": \"UPI\",\n  \"instrument\": \"success@paytrack\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Transactions",
+      "item": [
+        {
+          "name": "Transfer (P2P)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/transfer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "transfer"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiverUpiId\": \"receiver.user@paytrack\",\n  \"amount\": 100.00,\n  \"note\": \"Test transfer\",\n  \"category\": \"FOOD\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Generate QR",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/qr/generate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "qr", "generate"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100.00\n}"
+            }
+          }
+        },
+        {
+          "name": "Pay via QR",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/qr/pay",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "qr", "pay"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qrPayload\": \"upi://pay?pa=receiver.user@paytrack&pn=Receiver User&am=100.00&cu=INR\",\n  \"amount\": 100.00,\n  \"note\": \"QR payment\",\n  \"category\": \"FOOD\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Recharge",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/recharge",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "recharge"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobileNumber\": \"9876543210\",\n  \"operator\": \"AIRTEL\",\n  \"amount\": 100.00,\n  \"category\": \"UTILITIES\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get All Transactions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions?page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Transaction by ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/1?txnRef=TXN20241123000001",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "1"],
+              "query": [
+                {
+                  "key": "txnRef",
+                  "value": "TXN20241123000001"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Transactions",
+      "item": [
+        {
+          "name": "Admin: Get All Transactions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/admin/all?page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "admin", "all"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Get Transaction Summary",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/transactions/admin/summary",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "transactions", "admin", "summary"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Expenses",
+      "item": [
+        {
+          "name": "Create Manual Expense",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/expenses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "expenses"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"FOOD\",\n  \"description\": \"Lunch\",\n  \"amount\": 250.00\n}"
+            }
+          }
+        },
+        {
+          "name": "Get All Expenses",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/expenses?month=2024-11&category=FOOD",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "expenses"],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2024-11"
+                },
+                {
+                  "key": "category",
+                  "value": "FOOD"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Expense Category (by txnRef)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/expenses/txn/TXN20241123000001/category",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "expenses", "txn", "TXN20241123000001", "category"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"TRANSPORT\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Expense Summary",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/expenses/summary",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "expenses", "summary"]
+            }
+          }
+        },
+        {
+          "name": "Get Monthly Summary",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/expenses/summary/monthly?month=2024-11",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "expenses", "summary", "monthly"],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2024-11"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Trend (6 months)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/expenses/summary/trend?months=6",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "expenses", "summary", "trend"],
+              "query": [
+                {
+                  "key": "months",
+                  "value": "6"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Auth",
+      "item": [
+        {
+          "name": "Admin: Get All Users",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/admin/users?page=0&size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "admin", "users"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Update User Status",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/admin/users/123/status?status=BLOCKED",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "admin", "users", "123", "status"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "BLOCKED"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Get KYC Requests",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/admin/kyc?page=0&size=10&status=PENDING",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "admin", "kyc"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "10"
+                },
+                {
+                  "key": "status",
+                  "value": "PENDING"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin: Review KYC",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/admin/kyc/kyc-123/review?decision=APPROVED&remarks=Approved",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "admin", "kyc", "kyc-123", "review"],
+              "query": [
+                {
+                  "key": "decision",
+                  "value": "APPROVED"
+                },
+                {
+                  "key": "remarks",
+                  "value": "Approved"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

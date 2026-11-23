@@ -31,12 +31,12 @@ public class Expense {
     private String walletId;
 
     @Column(nullable = false)
-    private String category;
+    private String category; // FOOD, TRANSPORT, HOUSING, ENTERTAINMENT, UTILITIES, HEALTHCARE, SHOPPING, EDUCATION, OTHER
 
     @Column(nullable = false)
     private String description;
 
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal amount;
 
     @Column(nullable = false)
@@ -44,6 +44,15 @@ public class Expense {
 
     @Column(nullable = false)
     private LocalDateTime timestamp;
+
+    @Column(name = "source", nullable = false)
+    private String source; // PAYMENT or MANUAL
+
+    @Column(name = "category_source", nullable = false)
+    private String categorySource; // USER, RULE, DEFAULT, MANUAL
+
+    @Column(name = "txn_ref", nullable = true, unique = true)
+    private String txnRef;
 
     @PrePersist
     protected void onCreate() {
@@ -53,6 +62,15 @@ public class Expense {
         }
         if (status == null) {
             status = "PENDING";
+        }
+        if (source == null) {
+            source = "MANUAL";
+        }
+        if (categorySource == null) {
+            categorySource = "MANUAL";
+        }
+        if (category == null) {
+            category = "OTHER";
         }
     }
 }

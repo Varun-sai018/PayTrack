@@ -45,6 +45,7 @@ public class JwtUtil {
                 .withClaim("userId", user.getUserId())
                 .withClaim("role", user.getRole())
                 .withClaim("email", user.getEmail())
+                .withClaim("kycStatus", user.getKycStatus().name())
                 .withExpiresAt(new Date(System.currentTimeMillis() + expiration))
                 .withIssuer(issuer)
                 .sign(Algorithm.HMAC256(secret.getBytes(StandardCharsets.UTF_8)));

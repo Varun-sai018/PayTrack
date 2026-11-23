@@ -46,10 +46,10 @@ eureka:
       defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka/}
 
 jwt:
-  secret: a2V5LWlzLWEtc2VjcmV0LWZvci1obGQtand0LXNpZ25pbmctdHdvLWh1bmRyZWQtYml0cy1sb25nLXNlY3JldA==
-  access-token-expiration: 86400000
+  secret: ${JWT_SECRET:a2V5LWlzLWEtc2VjcmV0LWZvci1obGQtand0LXNpZ25pbmctdHdvLWh1bmRyZWQtYml0cy1sb25nLXNlY3JldA==}
+  access-token-expiration: 900000
   refresh-token-expiration: 604800000
-  issuer: ecommerce-app
+  issuer: paytrack-auth
 
 otp:
   expiration-minutes: 5

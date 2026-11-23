@@ -23,5 +23,9 @@ public class RegisterRequest {
     @NotBlank(message = "Password is required")
     private String password;
 
+    @NotBlank(message = "Phone number is required")
+    @Pattern(regexp = "^[6-9]\\d{9}$", message = "Invalid phone number")
+    private String phone;
+
     private String role;
 }
