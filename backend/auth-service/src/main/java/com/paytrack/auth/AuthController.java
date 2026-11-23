@@ -118,11 +118,9 @@ public class AuthController {
     }
 
     @GetMapping("/internal/auth/users/by-upi/{upiId}")
-    public ResponseEntity<ApiResponse<UserDto>> getByUpi(@PathVariable String upiId) {
-        User user = authService.lookupUserByUpi(upiId);
-        return ResponseEntity.ok(ApiResponse.success(
-                UserDto.builder().upiId(user.getUpiId()).build(),
-                "User found"));
+    public ResponseEntity<ApiResponse<UserLookupResponse>> getByUpi(@PathVariable String upiId) {
+        UserLookupResponse userLookup = authService.lookupUserByUpi(upiId);
+        return ResponseEntity.ok(ApiResponse.success(userLookup, "User found"));
     }
 
     @GetMapping("/health")

@@ -1,6 +1,6 @@
 package com.paytrack.expense.event;
 
-import com.paytrack.transaction.event.PaymentCompletedEvent;
+import com.paytrack.expense.event.PaymentCompletedEvent;
 import com.paytrack.expense.config.RabbitMQConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;

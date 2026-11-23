@@ -148,13 +148,9 @@ services:
     container_name: paytrack-eureka
     restart: always
     depends_on:
-      - mysql-auth
       - rabbitmq
     environment:
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://localhost:8761/eureka/
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-auth:3306/paytrack_auth
-      SPRING_RABBITMQ_HOST: rabbitmq
-      SPRING_DATA_REDIS_HOST: redis
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka/
     networks:
       - paytrack-network
     ports:
@@ -169,6 +165,7 @@ services:
     depends_on:
       - eureka-service
     environment:
+      SERVER_PORT: 8089
       SPRING_CLOUD_GATEWAY_ROUTES: |
         routes:
           - id: auth-service
@@ -205,11 +202,10 @@ services:
                   name: expense-service-cb
       SPRING_CLOUD_DISCOVERY_CLIENT_REGISTERED: true
       SPRING_RABBITMQ_HOST: rabbitmq
-      SPRING_DATA_REDIS_HOST: redis
     networks:
       - paytrack-network
     ports:
-      - "8080:8080"
+      - "8089:8089"
 
   auth-service:
     build:

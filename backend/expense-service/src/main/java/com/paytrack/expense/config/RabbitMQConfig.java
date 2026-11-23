@@ -1,5 +1,6 @@
 package com.paytrack.expense.config;
 
+import com.paytrack.expense.event.PaymentCompletedEvent;
 import com.paytrack.expense.event.UserRegisteredEvent;
 import org.springframework.amqp.support.converter.DefaultClassMapper;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
@@ -18,7 +19,8 @@ public class RabbitMQConfig {
         DefaultClassMapper classMapper = new DefaultClassMapper();
         classMapper.setTrustedPackages("*");
         classMapper.setIdClassMapping(Map.of(
-            "com.paytrack.auth.event.UserRegisteredEvent", UserRegisteredEvent.class
+            "com.paytrack.expense.event.UserRegisteredEvent", UserRegisteredEvent.class,
+            "com.paytrack.expense.event.PaymentCompletedEvent", PaymentCompletedEvent.class
         ));
         converter.setClassMapper(classMapper);
         return converter;

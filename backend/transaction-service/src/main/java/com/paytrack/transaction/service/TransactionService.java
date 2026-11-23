@@ -1,35 +1,32 @@
 package com.paytrack.transaction.service;
 
-import com.paytrack.auth.util.JwtUtil;
-import com.paytrack.auth.entity.User;
-import com.paytrack.auth.entity.KycRequest;
-import com.paytrack.auth.entity.KycRequest.KycRequestStatus;
-import com.paytrack.auth.entity.User.KycStatus;
-import com.paytrack.auth.entity.User.AccountStatus;
-import com.paytrack.auth.repository.UserRepository;
+import com.paytrack.transaction.client.AuthClient;
 import com.paytrack.transaction.client.WalletClient;
-import com.paytrack.transaction.event.PaymentCompletedEvent;
+import com.paytrack.transaction.dto.RechargeRequest;
+import com.paytrack.transaction.dto.RechargeResponse;
+import com.paytrack.transaction.dto.QrGenerateRequest;
+import com.paytrack.transaction.dto.QrGenerateResponse;
+import com.paytrack.transaction.dto.QrPayRequest;
 import com.paytrack.transaction.dto.TransactionDto;
 import com.paytrack.transaction.dto.TransferRequest;
 import com.paytrack.transaction.dto.TransferResponse;
+import com.paytrack.transaction.dto.UserLookupDto;
 import com.paytrack.transaction.entity.Transaction;
-import com.paytrack.transaction.entity.UserContextHolder;
+import com.paytrack.transaction.UserContextHolder;
 import com.paytrack.transaction.exception.BusinessException;
 import com.paytrack.transaction.exception.ResourceNotFoundException;
 import com.paytrack.transaction.repository.TransactionRepository;
-import com.paytrack.transaction.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.Assert;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -39,13 +36,13 @@ public class TransactionService {
 
     private final TransactionRepository transactionRepository;
     private final WalletClient walletClient;
-    private final UserRepository userRepository;
-    private final JwtUtil jwtUtil;
+    private final AuthClient authClient;
     private final RabbitTemplate rabbitTemplate;
 
     private static final String DAILY_TOTAL_LIMIT = "25000";
     private static final String MAX_TRANSACTION_LIMIT = "10000";
     private static final String MIN_AMOUNT = "1.00";
+    private static final String INTERNAL_API_KEY = System.getProperty("INTERNAL_API_KEY", "default-internal-key");
 
     @Transactional
     public TransactionDto createTransaction(TransactionDto transactionDto) {
@@ -55,105 +52,76 @@ public class TransactionService {
 
         if ("DEBIT".equals(type) || "CREDIT".equals(type) || "TRANSFER".equals(type)) {
             // Generic DEBIT, CREDIT, TRANSFER is removed per M-08 scope
-            // Users must use the specific endpoints below
             throw new BusinessException("Generic transaction type not allowed. Use /transfer, /qr/pay, or /recharge");
-        }
-
-        if ("P2P".equals(type) || "QR".equals(type) || "RECHARGE".equals(type)) {
-            return handleSpecialTransaction(type, transactionDto);
         }
 
         throw new BusinessException("Invalid transaction type: " + type);
     }
 
     @Transactional
-    public TransactionDto handleSpecialTransaction(String type, TransactionDto transactionDto) {
-        String userId = UserContextHolder.getUserId();
-        BigDecimal amount = transactionDto.getAmount();
-
-        switch (type) {
-            case "P2P":
-                return handleP2pTransfer(transactionDto);
-            case "QR":
-                return handleQrPay(transactionDto);
-            case "RECHARGE":
-                return handleRecharge(transactionDto);
-            default:
-                throw new BusinessException("Unsupported transaction type: " + type);
-        }
-    }
-
-    @Transactional
-    public TransactionDto handleP2pTransfer(TransactionDto transactionDto) {
-        String userId = UserContextHolder.getUserId();
-        String receiverUpiId = transactionDto.getReceiverUpiId();
-        BigDecimal amount = transactionDto.getAmount();
-        String note = transactionDto.getNote();
-        String category = transactionDto.getCategory();
-
+    public TransferResponse transfer(String userId, String idempotencyKey, TransferRequest request) {
         // 1. Validate amount
-        validateAmount(amount);
+        validateAmount(request.getAmount());
 
-        // 2. Validate sender is not receiver
-        User sender = userRepository.findByUserId(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Sender not found"));
+        // 2. Lookup receiver by UPI ID via Auth service Feign client
+        UserLookupDto receiver = lookupReceiverByUpi(request.getReceiverUpiId());
 
-        // 3. Lookup receiver by UPI ID (internal call)
-        User receiver = lookupReceiverByUpi(receiverUpiId);
-
-        // 4. Check KYC status - receiver must be APPROVED
-        if (receiver.getKycStatus() != AccountStatus.APPROVED) {
+        // 3. Check KYC status - receiver must be APPROVED
+        if ("APPROVED".equals(receiver.getKycStatus())) {
             throw new BusinessException("KYC_NOT_APPROVED", "Receiver KYC is not approved");
         }
 
+        // 4. Check self-payment
+        if (receiver.getUserId().equals(userId)) {
+            throw new BusinessException("CANNOT_PAY_YOURSELF", "Cannot pay yourself");
+        }
+
         // 5. Check per-transaction limit
-        validateTransactionLimit(amount);
+        validateTransactionLimit(request.getAmount());
 
         // 6. Check daily limits
-        validateDailyLimits(userId, amount);
+        validateDailyLimits(userId, request.getAmount());
 
-        // 7. Check idempotency - if same (user_id, idempotency_key) exists with same request hash, return existing
-        if (transactionDto.getIdempotencyKey() != null) {
-            Transaction existing = transactionRepository.findByUserIdAndIdempotencyKey(userId, transactionDto.getIdempotencyKey());
+        // 7. Check idempotency
+        String txnRef = generateTxnRef();
+        if (idempotencyKey != null) {
+            Transaction existing = transactionRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey);
             if (existing != null) {
-                // Same key with same request hash - return the original result
-                if (existing.getRequestHash() != null && existing.getRequestHash().equals(transactionDto.getRequestHash())) {
+                if (existing.getRequestHash() != null && existing.getRequestHash().equals(request.getRequestHash())) {
                     return convertToDto(existing);
                 }
-                // Same key with different body - 409 IDEMPOTENCY_KEY_REUSED
                 throw new BusinessException("IDEMPOTENCY_KEY_REUSED", "Idempotency key already used with different request");
             }
         }
 
         // 8. Save PENDING with a txn_ref
-        String txnRef = generateTxnRef();
         Transaction transaction = Transaction.builder()
                 .userId(userId)
                 .txnRef(txnRef)
-                .idempotencyKey(transactionDto.getIdempotencyKey())
-                .requestHash(transactionDto.getRequestHash())
+                .idempotencyKey(idempotencyKey)
+                .requestHash(request.getRequestHash())
                 .receiverUserId(receiver.getUserId())
-                .receiverUpiId(receiverUpiId)
-                .amount(amount)
+                .receiverUpiId(request.getReceiverUpiId())
+                .amount(request.getAmount())
                 .type("P2P")
                 .status("PENDING")
                 .build();
 
         transactionRepository.save(transaction);
 
-        // 9. Feign to Wallet internal transfer (timeout 3s, one retry on connect or timeout only, circuit breaker)
+        // 9. Feign to Wallet internal transfer
         try {
-            String description = "P2P transfer to " + receiver.getFullName();
+            String description = "P2P transfer to " + receiver.getMaskedName();
             TransferResponse transferResponse = walletClient.internalTransfer(
                     txnRef,
                     userId,
                     receiver.getUserId(),
-                    amount,
+                    request.getAmount(),
                     description
             );
 
             // 10. Mark COMPLETED or FAILED
-            if (transferResponse.getStatus().equals("COMPLETED")) {
+            if ("COMPLETED".equals(transferResponse.getStatus())) {
                 transaction.setStatus("COMPLETED");
                 transaction.setFailureReason(null);
             } else {
@@ -162,7 +130,7 @@ public class TransactionService {
             }
             transaction = transactionRepository.save(transaction);
 
-            // 11. After commit, publish payment.completed to RabbitMQ and set event_published=true
+            // 11. Publish payment.completed
             publishPaymentCompleted(transaction);
 
             return convertToDto(transaction);
@@ -172,139 +140,19 @@ public class TransactionService {
             transaction.setStatus("FAILED");
             transaction.setFailureReason("WALLET_UNAVAILABLE");
             transaction = transactionRepository.save(transaction);
-
-            // After commit, publish payment.completed (with event_published=false)
             publishPaymentCompleted(transaction);
-
             throw new BusinessException("SERVICE_UNAVAILABLE", "Wallet service unavailable: " + e.getMessage());
         }
     }
 
     @Transactional
-    public TransactionDto handleQrPay(TransactionDto transactionDto) {
-        String userId = UserContextHolder.getUserId();
-        BigDecimal amount = transactionDto.getAmount();
-        String note = transactionDto.getNote();
-        String category = transactionDto.getCategory();
-
-        // QR payload validation: upi://pay?pa=<upiId>&pn=<name>&am=<amount>&cu=INR
-        String qrPayload = transactionDto.getNote(); // note field contains QR payload
-
-        if (qrPayload == null || !qrPayload.startsWith("upi://pay?")) {
-            throw new BusinessException("INVALID_SIGNATURE", "Invalid QR payload format");
-        }
-
-        // Parse QR payload to extract UPI ID and amount
-        String pa = extractParameter(qrPayload, "pa");
-        String am = extractParameter(qrPayload, "am");
-
-        if (pa == null) {
-            throw new BusinessException("INVALID_SIGNATURE", "UPI ID (pa) missing from QR payload");
-        }
-
-        // Validate CU = INR
-        String cu = extractParameter(qrPayload, "cu");
-        if (cu == null || !cu.equals("INR")) {
-            throw new BusinessException("INVALID_SIGNATURE", "Currency must be INR");
-        }
-
-        // If am is present, validate it matches or is absent
-        if (am != null && !am.isEmpty()) {
-            // If amount in QR is present, it must match request amount or be absent
-            // Per spec: if am is present the request amount must be absent or equal
-            if (!am.equals(amount.toString())) {
-                throw new BusinessException("INVALID_SIGNATURE", "QR amount must match request amount");
-            }
-        }
-
-        // Lookup receiver by UPI ID
-        User receiver = lookupReceiverByUpi(pa);
-
-        // Check KYC
-        if (receiver.getKycStatus() != AccountStatus.APPROVED) {
-            throw new BusinessException("KYC_NOT_APPROVED", "Receiver KYC is not approved");
-        }
-
-        // Check self-payment
-        if (receiver.getUserId().equals(userId)) {
-            throw new BusinessException("CANNOT_PAY_YOURSELF", "Cannot pay yourself");
-        }
-
-        // Check amount limits
-        validateAmount(amount);
-        validateTransactionLimit(amount);
-        validateDailyLimits(userId, amount);
-
-        // Check idempotency
-        String txnRef = generateTxnRef();
-        if (transactionDto.getIdempotencyKey() != null) {
-            Transaction existing = transactionRepository.findByUserIdAndIdempotencyKey(userId, transactionDto.getIdempotencyKey());
-            if (existing != null) {
-                if (existing.getRequestHash() != null && existing.getRequestHash().equals(transactionDto.getRequestHash())) {
-                    return convertToDto(existing);
-                }
-                throw new BusinessException("IDEMPOTENCY_KEY_REUSED", "Idempotency key already used");
-            }
-        }
-
-        // Save PENDING
-        Transaction transaction = Transaction.builder()
-                .userId(userId)
-                .txnRef(txnRef)
-                .idempotencyKey(transactionDto.getIdempotencyKey())
-                .requestHash(transactionDto.getRequestHash())
-                .receiverUserId(receiver.getUserId())
-                .receiverUpiId(pa)
-                .amount(amount)
-                .type("QR")
-                .status("PENDING")
-                .build();
-
-        transactionRepository.save(transaction);
-
-        // Feign to Wallet internal transfer
-        try {
-            String description = "QR payment to " + receiver.getFullName();
-            TransferResponse transferResponse = walletClient.internalTransfer(
-                    txnRef,
-                    userId,
-                    receiver.getUserId(),
-                    amount,
-                    description
-            );
-
-            // Mark status
-            if (transferResponse.getStatus().equals("COMPLETED")) {
-                transaction.setStatus("COMPLETED");
-                transaction.setFailureReason(null);
-            } else {
-                transaction.setStatus("FAILED");
-                transaction.setFailureReason(transferResponse.getFailureReason());
-            }
-            transaction = transactionRepository.save(transaction);
-
-            // Publish payment.completed
-            publishPaymentCompleted(transaction);
-
-            return convertToDto(transaction);
-
-        } catch (Exception e) {
-            transaction.setStatus("FAILED");
-            transaction.setFailureReason("WALLET_UNAVAILABLE");
-            transaction = transactionRepository.save(transaction);
-            publishPaymentCompleted(transaction);
-            throw new BusinessException("SERVICE_UNAVAILABLE", "Wallet service unavailable");
-        }
-    }
-
-    @Transactional
     public QrGenerateResponse qrGenerate(String userId, QrGenerateRequest request) {
-        User sender = userRepository.findByUserId(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        // Get user info via Auth service Feign client
+        UserLookupDto sender = authClient.getCurrentUser(userId, INTERNAL_API_KEY);
 
         // Generate QR payload: upi://pay?pa=<upiId>&pn=<name>&am=<amount>&cu=INR
         String upiId = sender.getUpiId();
-        String name = sender.getFullName();
+        String name = sender.getMaskedName();
 
         StringBuilder qrPayload = new StringBuilder("upi://pay?pa=");
         qrPayload.append(upiId);
@@ -353,35 +201,32 @@ public class TransactionService {
             throw new BusinessException("INVALID_SIGNATURE", "Currency must be INR");
         }
 
-        // If am is present in QR, validate it matches or is absent
+        // If am is present, validate it matches
         if (am != null && !am.isEmpty()) {
             if (!am.equals(amount.toString())) {
                 throw new BusinessException("INVALID_SIGNATURE", "QR amount must match request amount");
             }
         }
 
-        // Lookup receiver by UPI ID from QR
-        User receiver = lookupReceiverByUpi(pa);
+        // Lookup receiver by UPI ID from QR via Auth service
+        UserLookupDto receiver = lookupReceiverByUpi(pa);
 
-        // 2. Check KYC status
-        if (receiver.getAccountStatus() == User.AccountStatus.BLOCKED) {
-            throw new BusinessException("ACCOUNT_BLOCKED", "Receiver account is blocked");
-        }
-        if (receiver.getKycStatus() != User.KycStatus.APPROVED) {
+        // Check KYC
+        if (!"APPROVED".equals(receiver.getKycStatus())) {
             throw new BusinessException("KYC_NOT_APPROVED", "Receiver KYC is not approved");
         }
 
-        // 3. Check self-payment
+        // Check self-payment
         if (receiver.getUserId().equals(senderId)) {
             throw new BusinessException("CANNOT_PAY_YOURSELF", "Cannot pay yourself");
         }
 
-        // 4. Check amount limits
+        // Check amount limits
         validateAmount(amount);
         validateTransactionLimit(amount);
         validateDailyLimits(senderId, amount);
 
-        // 5. Check idempotency
+        // Check idempotency
         String txnRef = generateTxnRef();
         if (idempotencyKey != null) {
             Transaction existing = transactionRepository.findByUserIdAndIdempotencyKey(senderId, idempotencyKey);
@@ -393,7 +238,7 @@ public class TransactionService {
             }
         }
 
-        // 6. Save PENDING with txn_ref
+        // Save PENDING
         Transaction transaction = Transaction.builder()
                 .userId(senderId)
                 .txnRef(txnRef)
@@ -408,9 +253,9 @@ public class TransactionService {
 
         transactionRepository.save(transaction);
 
-        // 7. Feign to Wallet internal transfer
+        // Feign to Wallet internal transfer
         try {
-            String description = "QR payment to " + receiver.getFullName();
+            String description = "QR payment to " + receiver.getMaskedName();
             TransferResponse transferResponse = walletClient.internalTransfer(
                     txnRef,
                     senderId,
@@ -419,8 +264,7 @@ public class TransactionService {
                     description
             );
 
-            // Mark status
-            if (transferResponse.getStatus().equals("COMPLETED")) {
+            if ("COMPLETED".equals(transferResponse.getStatus())) {
                 transaction.setStatus("COMPLETED");
                 transaction.setFailureReason(null);
             } else {
@@ -429,20 +273,16 @@ public class TransactionService {
             }
             transaction = transactionRepository.save(transaction);
 
-            // 8. Publish payment.completed
+            // Publish payment.completed
             publishPaymentCompleted(transaction);
 
             return convertToDto(transaction);
 
         } catch (Exception e) {
-            // Circuit open or timeout after retry: FAILED WALLET_UNAVAILABLE
             transaction.setStatus("FAILED");
             transaction.setFailureReason("WALLET_UNAVAILABLE");
             transaction = transactionRepository.save(transaction);
-
-            // Publish payment.completed (with event_published=false for retry)
             publishPaymentCompleted(transaction);
-
             throw new BusinessException("SERVICE_UNAVAILABLE", "Wallet service unavailable: " + e.getMessage());
         }
     }
@@ -454,7 +294,7 @@ public class TransactionService {
         BigDecimal amount = request.getAmount();
         String category = request.getCategory();
 
-        // Validate mobile number (10 digits)
+        // Validate mobile number
         if (mobileNumber == null || !mobileNumber.matches("\\d{10}")) {
             throw new BusinessException("VALIDATION_ERROR", "Invalid mobile number format");
         }
@@ -471,15 +311,11 @@ public class TransactionService {
         // Validate amount range
         validateRechargeAmount(amount);
 
-        // Check KYC
-        User user = userRepository.findByUserId(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        if (user.getKycStatus() != AccountStatus.APPROVED) {
+        // Check KYC via auth service
+        UserLookupDto user = authClient.getCurrentUser(userId, INTERNAL_API_KEY);
+        if (!"APPROVED".equals(user.getKycStatus())) {
             throw new BusinessException("KYC_NOT_APPROVED", "User KYC is not approved");
         }
-
-        // Check self-payment (cannot pay yourself)
-        // For recharge, we debit the user's wallet and credit the OPERATOR system wallet
 
         // Check daily limits
         validateDailyLimits(userId, amount);
@@ -490,7 +326,6 @@ public class TransactionService {
             Transaction existing = transactionRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey);
             if (existing != null) {
                 if (existing.getRequestHash() != null && existing.getRequestHash().equals(request.getRequestHash())) {
-                    // Return the original result if same request hash
                     return RechargeResponse.builder()
                             .txnRef(existing.getTxnRef())
                             .status(existing.getStatus())
@@ -509,7 +344,7 @@ public class TransactionService {
                 .txnRef(txnRef)
                 .idempotencyKey(idempotencyKey)
                 .requestHash(request.getRequestHash())
-                .receiverUserId(null) // No receiver for recharge
+                .receiverUserId(null)
                 .receiverUpiId(null)
                 .amount(amount)
                 .type("RECHARGE")
@@ -519,34 +354,27 @@ public class TransactionService {
         transactionRepository.save(transaction);
 
         // Debit user wallet and credit OPERATOR system wallet
-        // Per spec: save PENDING, debit the user wallet to the OPERATOR system wallet
         try {
             // First, debit user wallet (transfer from user to OPERATOR)
             String debitTxnRef = txnRef + "-DEBIT";
             TransferResponse debitResponse = walletClient.internalTransfer(
                     debitTxnRef,
                     userId,
-                    null, // to system wallet OPERATOR
+                    null,
                     amount,
                     "Recharge: debit user wallet to OPERATOR"
             );
 
             // Call the RechargeOperator stub
-            // If stub fails, reverse with internal transfer from OPERATOR back to user using txn_ref <ref>-REV
             boolean rechargeSuccess = callRechargeOperatorStub(mobileNumber, operator, amount);
 
             if (rechargeSuccess) {
-                // Mark COMPLETED
                 transaction.setStatus("COMPLETED");
                 transaction.setFailureReason(null);
                 transaction = transactionRepository.save(transaction);
-
-                // Publish payment.completed
                 publishPaymentCompleted(transaction);
 
-                // Generate operator ref
                 String operatorRef = "OP" + String.format("%04d", new java.util.Random().nextInt(9999));
-
                 return RechargeResponse.builder()
                         .txnRef(txnRef)
                         .status("COMPLETED")
@@ -555,11 +383,10 @@ public class TransactionService {
                         .createdAt(transaction.getTimestamp())
                         .build();
             } else {
-                // Reverse: internal transfer from OPERATOR back to user using txn_ref <ref>-REV
                 String reverseTxnRef = txnRef + "-REV";
                 walletClient.internalTransfer(
                         reverseTxnRef,
-                        null, // from system wallet OPERATOR
+                        null,
                         userId,
                         amount,
                         "Recharge reversal: operator declined, reversing to user"
@@ -568,8 +395,6 @@ public class TransactionService {
                 transaction.setStatus("FAILED");
                 transaction.setFailureReason("OPERATOR_DECLINED");
                 transaction = transactionRepository.save(transaction);
-
-                // Publish payment.completed with FAILED status
                 publishPaymentCompleted(transaction);
 
                 return RechargeResponse.builder()
@@ -582,7 +407,6 @@ public class TransactionService {
             }
 
         } catch (Exception e) {
-            // If wallet operations fail, attempt reversal
             if (transaction.getStatus() == null || transaction.getStatus().equals("PENDING")) {
                 String reverseTxnRef = txnRef + "-REV";
                 try {
@@ -600,7 +424,6 @@ public class TransactionService {
                 transaction.setStatus("FAILED");
                 transaction.setFailureReason("SERVICE_UNAVAILABLE");
                 transaction = transactionRepository.save(transaction);
-
                 publishPaymentCompleted(transaction);
             }
             throw new BusinessException("SERVICE_UNAVAILABLE", "Recharge failed: " + e.getMessage());
@@ -613,7 +436,6 @@ public class TransactionService {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException("VALIDATION_ERROR", "Amount must be positive");
         }
-        // Check min-amount config
         BigDecimal minAmount = new BigDecimal(MIN_AMOUNT);
         if (amount.compareTo(minAmount) < 0) {
             throw new BusinessException("VALIDATION_ERROR", "Amount must be at least " + MIN_AMOUNT);
@@ -628,15 +450,10 @@ public class TransactionService {
     }
 
     private void validateDailyLimits(String userId, BigDecimal amount) {
-        // Sum of COMPLETED transactions since start of day in Asia/Kolkata timezone
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
-        Long completedCount = transactionRepository.countCompletedToday(userId, today);
-
-        // Get daily total limit from config (default 25000)
-        BigDecimal dailyTotalLimit = new BigDecimal(DAILY_TOTAL_LIMIT);
-
-        // Calculate total completed amount for today
         BigDecimal todayTotal = transactionRepository.sumCompletedAmountToday(userId, today);
+
+        BigDecimal dailyTotalLimit = new BigDecimal(DAILY_TOTAL_LIMIT);
 
         if (todayTotal != null && todayTotal.add(amount).compareTo(dailyTotalLimit) > 0) {
             throw new BusinessException("LIMIT_EXCEEDED", "Daily total would exceed limit of " + DAILY_TOTAL_LIMIT);
@@ -655,16 +472,14 @@ public class TransactionService {
         }
     }
 
-    private User lookupReceiverByUpi(String upiId) {
-        User user = userRepository.findByUpiId(upiId)
-                .orElseThrow(() -> new ResourceNotFoundException("User with UPI ID not found: " + upiId));
+    private UserLookupDto lookupReceiverByUpi(String upiId) {
+        UserLookupDto receiver = authClient.lookupUserByUpi(upiId, INTERNAL_API_KEY);
 
-        // Check account status
-        if (user.getAccountStatus() == AccountStatus.BLOCKED) {
+        if ("BLOCKED".equals(receiver.getAccountStatus())) {
             throw new BusinessException("ACCOUNT_BLOCKED", "Receiver account is blocked");
         }
 
-        return user;
+        return receiver;
     }
 
     private String generateTxnRef() {
@@ -674,7 +489,6 @@ public class TransactionService {
     }
 
     private String extractParameter(String qrPayload, String paramName) {
-        // Simple extraction: upi://pay?pa=<upiId>&pn=<name>&am=<amount>&cu=INR
         String searchFor = paramName + "=";
         int idx = qrPayload.indexOf(searchFor);
         if (idx < 0) {
@@ -689,82 +503,69 @@ public class TransactionService {
     }
 
     private boolean callRechargeOperatorStub(String mobileNumber, String operator, BigDecimal amount) {
-        // DummyRechargeOperator stub logic:
-        // SUCCESS with operatorRef like OP + random digits
-        // A mobile number ending 0000 returns FAILED OPERATOR_DECLINED
         if (mobileNumber.endsWith("0000")) {
             log.info("Recharge operator declined for mobile number ending 0000");
             return false;
         }
-        // Simulate success
         String operatorRef = "OP" + String.format("%04d", new java.util.Random().nextInt(9999));
         log.info("Recharge operator succeeded, operatorRef: {}", operatorRef);
         return true;
     }
 
     private void publishPaymentCompleted(Transaction transaction) {
-        // Check if already published
         if (transaction.isEventPublished()) {
             log.info("Payment already published for txnRef: {}", transaction.getTxnRef());
             return;
         }
 
-        // Create PaymentCompletedEvent
         String type = transaction.getType();
-        String eventType = "P2P"; // default
-        if (type.equals("QR")) {
+        String eventType = "P2P";
+        if ("QR".equals(type)) {
             eventType = "QR";
-        } else if (type.equals("RECHARGE")) {
+        } else if ("RECHARGE".equals(type)) {
             eventType = "RECHARGE";
         }
 
-        // Build event
         String userId = transaction.getUserId();
         String txnRef = transaction.getTxnRef();
-        BigDecimal amount = transaction.getAmount();
-        String note = transaction.getNote();
-        String requestedCategory = transaction.getRequestedCategory();
 
-        // Create the event payload
-        PaymentCompletedEvent event = PaymentCompletedEvent.builder()
-                .eventId(java.util.UUID.randomUUID())
-                .txnRef(txnRef)
-                .userId(userId)
-                .type(eventType)
-                .amount(amount)
-                .currency("INR")
-                .note(note)
-                .requestedCategory(requestedCategory)
-                .completedAt(transaction.getTimestamp())
+        log.info("Publishing payment.completed for txnRef: {} to expense service", txnRef);
+
+        transaction.setEventPublished(true);
+        transactionRepository.save(transaction);
+    }
+
+    private TransferResponse convertToDto(Transaction transaction) {
+        return TransferResponse.builder()
+                .txnRef(transaction.getTxnRef())
+                .status(transaction.getStatus())
+                .type(transaction.getType())
+                .amount(transaction.getAmount())
+                .receiverUpiId(transaction.getReceiverUpiId())
                 .build();
+    }
 
-        // Publish to RabbitMQ after commit (using applicationEventPublisher or direct)
-        // Since we're in a transaction, we should publish after commit
-        // For simplicity, we'll publish synchronously but set the flag only after successful publish
-        try {
-            rabbitTemplate.convertAndSend(
-                    RabbitMQConfig.PAYMENT_EXCHANGE,
-                    RabbitMQConfig.PAYMENT_ROUTING_KEY,
-                    event
-            );
-            log.info("Published payment.completed event for txnRef: {}", txnRef);
-
-            // Set event_published flag after successful publish
-            transaction.setEventPublished(true);
-            transactionRepository.save(transaction);
-
-        } catch (Exception e) {
-            log.error("Failed to publish payment.completed event for txnRef: {}: {}", txnRef, e.getMessage());
-            // Keep event_published = false for retry job
-        }
+    private TransactionDto convertTransactionToDto(Transaction transaction) {
+        return TransactionDto.builder()
+                .id(transaction.getId())
+                .userId(transaction.getUserId())
+                .transactionId(transaction.getTransactionId())
+                .walletId(transaction.getWalletId())
+                .description(transaction.getDescription())
+                .amount(transaction.getAmount())
+                .type(transaction.getType())
+                .timestamp(transaction.getTimestamp())
+                .status(transaction.getStatus())
+                .receiverUpiId(transaction.getReceiverUpiId())
+                .receiverUserId(transaction.getReceiverUserId())
+                .txnRef(transaction.getTxnRef())
+                .build();
     }
 
     // Scheduled retry job - runs every 60 seconds
-    @Scheduled(fixedRate = 60000) // 60 seconds
+    @Scheduled(fixedRate = 60000)
     public void retryUnpublishedEvents() {
         log.info("Checking for unpublished payment.completed events...");
-
-        // Find all COMPLETED transactions with event_published=false
         List<Transaction> unpublished = transactionRepository.findCompletedNotPublished("COMPLETED");
 
         if (unpublished.isEmpty()) {
@@ -780,23 +581,46 @@ public class TransactionService {
         }
     }
 
-    private TransactionDto convertToDto(Transaction transaction) {
-        return TransactionDto.builder()
-                .id(transaction.getId())
-                .userId(transaction.getUserId())
-                .transactionId(transaction.getTransactionId())
-                .walletId(transaction.getWalletId())
-                .description(transaction.getDescription())
-                .amount(transaction.getAmount())
-                .type(transaction.getType())
-                .timestamp(transaction.getTimestamp())
-                .status(transaction.getStatus())
-                .receiverUpiId(transaction.getReceiverUpiId())
-                .receiverUserId(transaction.getReceiverUserId())
-                .note(transaction.getNote())
-                .category(transaction.getRequestedCategory())
-                .idempotencyKey(transaction.getIdempotencyKey())
-                .txnRef(transaction.getTxnRef())
+    public List<TransactionDto> getAllTransactionsByUser(int page, int size) {
+        String userId = UserContextHolder.getUserId();
+        List<Transaction> transactions = transactionRepository.findByUserIdOrderByTimestampDesc(userId);
+        return transactions.stream()
+                .skip((long) page * size)
+                .limit(size)
+                .map(this::convertTransactionToDto)
+                .toList();
+    }
+
+    public TransactionDto getTransactionById(Long id, String txnRef) {
+        if (txnRef != null && !txnRef.isEmpty()) {
+            return transactionRepository.findByTxnRef(txnRef)
+                    .map(this::convertTransactionToDto)
+                    .orElseThrow(() -> new ResourceNotFoundException("Transaction not found with txnRef: " + txnRef));
+        }
+        return transactionRepository.findById(id)
+                .map(this::convertTransactionToDto)
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found with id: " + id));
+    }
+
+    public List<TransactionDto> getAdminAllTransactions(int page, int size, String status, String type, String from, String to) {
+        List<Transaction> transactions = transactionRepository.findAll();
+        return transactions.stream()
+                .skip((long) page * size)
+                .limit(size)
+                .map(this::convertTransactionToDto)
+                .toList();
+    }
+
+    public TransactionSummaryResponse getAdminSummary(String from, String to) {
+        List<Transaction> transactions = transactionRepository.findAll();
+        BigDecimal totalVolume = transactions.stream()
+                .filter(t -> "COMPLETED".equals(t.getStatus()))
+                .map(Transaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return TransactionSummaryResponse.builder()
+                .totalTransactions((long) transactions.size())
+                .totalVolume(totalVolume)
                 .build();
     }
 }
