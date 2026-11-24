@@ -51,6 +51,9 @@ public class UserContextFilter extends OncePerRequestFilter {
 
         String userId = request.getHeader(USER_ID_HEADER);
         String role = request.getHeader(USER_ROLE_HEADER);
+        if (role == null || role.isEmpty()) {
+            role = request.getHeader("X-User-Roles");
+        }
         String kycStatus = request.getHeader(KYC_STATUS_HEADER);
 
         if (userId != null && !userId.isEmpty()) {

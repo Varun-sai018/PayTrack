@@ -102,6 +102,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                     h.set("X-User-Id", userId != null ? userId : "");
                     h.set("X-User-Email", email != null ? email : "");
                     h.set("X-User-Roles", String.join(",", roles));
+                    h.set("X-User-Role", String.join(",", roles));
                     h.set("X-Kyc-Status", kycStatus != null ? kycStatus : "");
                     h.set("X-Gateway-Secret", gatewaySecret);
                 }))

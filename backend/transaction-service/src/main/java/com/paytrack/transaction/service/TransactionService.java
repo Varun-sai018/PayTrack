@@ -585,7 +585,7 @@ public class TransactionService {
 
     private void validateAdmin() {
         String role = UserContextHolder.getRole();
-        if (!"ADMIN".equalsIgnoreCase(role)) {
+        if (role == null || (!"ADMIN".equalsIgnoreCase(role) && !"ROLE_ADMIN".equalsIgnoreCase(role) && !role.contains("ADMIN"))) {
             throw new BusinessException("FORBIDDEN", "Admin access required");
         }
     }
