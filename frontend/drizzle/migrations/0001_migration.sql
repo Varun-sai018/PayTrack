@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS ledger_entries_wallet_id_idx ON public.ledger_entries (wallet_id);
