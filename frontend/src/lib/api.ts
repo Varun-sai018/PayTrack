@@ -58,6 +58,16 @@ export interface TransactionSummary {
   recentTransactions: Transaction[];
 }
 
+export interface ServiceHealth {
+  name: string;
+  key: string;
+  endpoint: string;
+  status: "UP" | "DOWN";
+  latencyMs: number;
+  lastChecked: string;
+  error?: string;
+}
+
 export interface Wallet {
   id: string;
   user_id: string;
@@ -560,5 +570,51 @@ export const api = {
       created_at: t.timestamp || t.createdAt || t.created_at || new Date().toISOString(),
     }));
     return { rows, total: rows.length };
+  },
+
+  async checkServicesHealth(): Promise<ServiceHealth[]> {
+    const services = [
+      { name: "Auth Service", key: "auth", path: "/api/auth/admin/users?page=0&size=1" },
+      { name: "Transaction Service", key: "transaction", path: "/api/transactions/admin/summary" },
+      { name: "Wallet Service", key: "wallet", path: "/api/wallets/me" },
+      { name: "Expense Service", key: "expense", path: "/api/expenses" },
+    ];
+
+    const results = await Promise.all(
+      services.map(async (svc) => {
+        const start = performance.now();
+        try {
+          await apiFetch(svc.path);
+          const latencyMs = Math.round(performance.now() - start);
+          return {
+            name: svc.name,
+            key: svc.key,
+            endpoint: svc.path,
+            status: "UP" as const,
+            latencyMs,
+            lastChecked: new Date().toISOString(),
+          };
+        } catch (err: any) {
+          const latencyMs = Math.round(performance.now() - start);
+          // If wallet returns 404 WALLET_NOT_FOUND or valid API error, service is responsive and UP
+          const isAlive =
+            err?.message &&
+            (err.message.includes("Wallet not found") ||
+              err.message.includes("WALLET_NOT_FOUND") ||
+              err.message.includes("404"));
+          return {
+            name: svc.name,
+            key: svc.key,
+            endpoint: svc.path,
+            status: (isAlive ? "UP" : "DOWN") as const,
+            latencyMs,
+            lastChecked: new Date().toISOString(),
+            error: isAlive ? undefined : err?.message || "Service unreachable",
+          };
+        }
+      })
+    );
+
+    return results;
   },
 };

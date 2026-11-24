@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 
 import { AppShell } from "@/components/app-shell";
 import { getToken, getUser } from "@/lib/api";
@@ -19,6 +19,13 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthenticatedLayout() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  // Admin section uses its own dedicated Admin Layout rather than the customer AppShell
+  if (pathname.startsWith("/admin")) {
+    return <Outlet />;
+  }
+
   return (
     <AppShell>
       <Outlet />

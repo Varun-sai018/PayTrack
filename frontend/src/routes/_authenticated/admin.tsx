@@ -11,15 +11,18 @@ import {
   Filter,
   RefreshCw,
   Search,
+  Server,
   ShieldAlert,
   ShieldCheck,
   UserCheck,
   UserX,
   Users,
   XCircle,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { AdminShell, type AdminTab } from "@/components/admin-shell";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,10 +44,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { api, getUser, type AdminUser, type KycItem, type Transaction } from "@/lib/api";
+import { api, getUser, type AdminUser, type KycItem, type ServiceHealth, type Transaction } from "@/lib/api";
 import { formatINR } from "@/lib/paytrack";
 import {
+  adminHealthQuery,
   adminKycQuery,
   adminSummaryQuery,
   adminTransactionsQuery,
@@ -79,6 +82,7 @@ export const Route = createFileRoute("/_authenticated/admin")({
       context.queryClient.ensureQueryData(adminKycQuery()),
       context.queryClient.ensureQueryData(adminUsersQuery()),
       context.queryClient.ensureQueryData(adminTransactionsQuery()),
+      context.queryClient.ensureQueryData(adminHealthQuery),
     ]),
   component: AdminPage,
 });
@@ -89,8 +93,9 @@ function AdminPage() {
   const { data: kycRequests } = useSuspenseQuery(adminKycQuery());
   const { data: users } = useSuspenseQuery(adminUsersQuery());
   const { data: transactionsData } = useSuspenseQuery(adminTransactionsQuery());
+  const { data: healthData, refetch: refetchHealth, isFetching: isFetchingHealth } = useSuspenseQuery(adminHealthQuery);
 
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
 
   // KYC filters and reject dialog state
   const [kycFilter, setKycFilter] = useState<string>("ALL");
@@ -153,8 +158,9 @@ function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["admin-kyc"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-users"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-transactions"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-health"] }),
     ]);
-    toast.success("Dashboard refreshed");
+    toast.success("Real-time data refreshed");
   };
 
   // Filtered lists
@@ -166,6 +172,26 @@ function AdminPage() {
   const pendingKycCount = useMemo(
     () => kycRequests.filter((k) => k.status === "PENDING").length,
     [kycRequests],
+  );
+
+  const approvedKycCount = useMemo(
+    () => kycRequests.filter((k) => k.status === "APPROVED").length,
+    [kycRequests],
+  );
+
+  const rejectedKycCount = useMemo(
+    () => kycRequests.filter((k) => k.status === "REJECTED").length,
+    [kycRequests],
+  );
+
+  const activeUsersCount = useMemo(
+    () => users.filter((u) => u.active).length,
+    [users],
+  );
+
+  const suspendedUsersCount = useMemo(
+    () => users.filter((u) => !u.active).length,
+    [users],
   );
 
   const filteredUsers = useMemo(() => {
@@ -204,233 +230,295 @@ function AdminPage() {
   }, [allTxns, txnSearch, txnTypeFilter, txnStatusFilter]);
 
   return (
-    <div className="space-y-8">
-      <PageHeader
-        eyebrow={
-          <span className="flex items-center gap-1.5 font-medium text-highlight-foreground">
-            <ShieldCheck className="h-4 w-4" /> Administration & Compliance
-          </span>
-        }
-        title="Admin Portal"
-        description="Monitor system analytics, review KYC submissions, audit transactions, and manage user accounts."
-        actions={
-          <Button variant="outline" size="sm" onClick={refreshAll} className="gap-2">
-            <RefreshCw className="h-4 w-4" /> Refresh
-          </Button>
-        }
-      />
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 md:inline-flex md:w-auto">
-          <TabsTrigger value="overview" className="gap-2">
-            <Activity className="h-4 w-4" /> Overview
-          </TabsTrigger>
-          <TabsTrigger value="kyc" className="gap-2">
-            <ShieldAlert className="h-4 w-4" />
-            KYC Reviews
-            {pendingKycCount > 0 && (
-              <span className="ml-1 rounded-full bg-warning/20 px-2 py-0.5 text-xs font-semibold text-warning">
-                {pendingKycCount}
+    <AdminShell
+      currentTab={activeTab}
+      onTabChange={setActiveTab}
+      pendingKycCount={pendingKycCount}
+      userCount={users.length}
+    >
+      <div className="space-y-6">
+        {/* Top Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-5">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <ShieldCheck className="h-4 w-4 text-highlight-foreground" /> Admin Console
               </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="users" className="gap-2">
-            <Users className="h-4 w-4" /> Users ({users.length})
-          </TabsTrigger>
-          <TabsTrigger value="transactions" className="gap-2">
-            <ArrowLeftRight className="h-4 w-4" /> Transactions
-          </TabsTrigger>
-        </TabsList>
+              <span className="text-muted-foreground">•</span>
+              <span className="text-xs font-medium text-foreground">
+                {activeTab === "overview" && "System Overview & Analytics"}
+                {activeTab === "kyc" && "KYC Verification Queue"}
+                {activeTab === "users" && "User Governance"}
+                {activeTab === "transactions" && "Financial Audit Trail"}
+                {activeTab === "health" && "Microservices Live Health"}
+              </span>
+            </div>
+            <h1 className="mt-1 font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              {activeTab === "overview" && "Platform Operations & Metrics"}
+              {activeTab === "kyc" && "Identity & Document Reviews"}
+              {activeTab === "users" && "User Account Governance"}
+              {activeTab === "transactions" && "System Transaction Audit"}
+              {activeTab === "health" && "Microservices Health Monitor"}
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={refreshAll} className="gap-2 text-xs">
+              <RefreshCw className="h-3.5 w-3.5" /> Sync Live Data
+            </Button>
+          </div>
+        </div>
 
         {/* 1. OVERVIEW TAB */}
-        <TabsContent value="overview" className="space-y-6">
-          {/* Key Metrics Cards */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card className="p-5 shadow-card">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Total Platform Volume
-              </p>
-              <p className="num mt-2 font-display text-2xl font-bold text-foreground">
-                {formatINR(summary?.totalVolume ?? 0)}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">Across all completed payments</p>
-            </Card>
+        {activeTab === "overview" && (
+          <div className="space-y-6">
+            {/* Real KPI Cards */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card className="p-5 shadow-card border-border/80">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Total Platform Volume
+                </p>
+                <p className="num mt-2 font-display text-2xl font-bold text-foreground">
+                  {formatINR(summary?.totalVolume ?? 0)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">Settled across all wallets</p>
+              </Card>
 
-            <Card className="p-5 shadow-card">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Total Transactions
-              </p>
-              <p className="num mt-2 font-display text-2xl font-bold text-foreground">
-                {summary?.totalTransactions ?? 0}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">P2P, recharges, and topups</p>
-            </Card>
+              <Card className="p-5 shadow-card border-border/80">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Total Platform Transactions
+                </p>
+                <p className="num mt-2 font-display text-2xl font-bold text-foreground">
+                  {summary?.totalTransactions ?? 0}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">P2P, recharges, and topups</p>
+              </Card>
 
-            <Card className="p-5 shadow-card">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Pending KYC Verifications
-              </p>
-              <p className="num mt-2 font-display text-2xl font-bold text-warning">
-                {pendingKycCount}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">Awaiting admin review</p>
-            </Card>
+              <Card className="p-5 shadow-card border-border/80">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Pending KYC Requests
+                </p>
+                <p className="num mt-2 font-display text-2xl font-bold text-warning">
+                  {pendingKycCount}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">Requiring manual approval</p>
+              </Card>
 
-            <Card className="p-5 shadow-card">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Registered Users
-              </p>
-              <p className="num mt-2 font-display text-2xl font-bold text-foreground">
-                {users.length}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">Active platform accounts</p>
-            </Card>
-          </div>
+              <Card className="p-5 shadow-card border-border/80">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Registered Accounts
+                </p>
+                <p className="num mt-2 font-display text-2xl font-bold text-foreground">
+                  {users.length}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {activeUsersCount} active • {suspendedUsersCount} suspended
+                </p>
+              </Card>
+            </div>
 
-          {/* Breakdown & Analytics */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card className="shadow-card">
-              <CardHeader>
-                <CardTitle className="text-lg">Transaction Volume by Type</CardTitle>
-                <CardDescription>Aggregate value processed per transaction channel</CardDescription>
+            {/* Real Analytics Breakdown Grid */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              {/* Channel Volume Breakdown */}
+              <Card className="shadow-card border-border/80">
+                <CardHeader>
+                  <CardTitle className="text-base">Transaction Volume by Type</CardTitle>
+                  <CardDescription>Processed volume per financial operation</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {Object.keys(summary?.volumeByType || {}).length === 0 ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      No transaction volume recorded yet
+                    </p>
+                  ) : (
+                    Object.entries(summary?.volumeByType || {}).map(([type, vol]) => (
+                      <div
+                        key={type}
+                        className="flex items-center justify-between border-b border-border/50 pb-3 last:border-0 last:pb-0"
+                      >
+                        <div>
+                          <p className="font-medium text-foreground text-sm">
+                            {type.replace(/_/g, " ")}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {summary?.countByType?.[type] ?? 0} transactions
+                          </p>
+                        </div>
+                        <span className="font-semibold text-foreground text-sm">
+                          {formatINR(Number(vol))}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Real KYC Breakdown */}
+              <Card className="shadow-card border-border/80">
+                <CardHeader>
+                  <CardTitle className="text-base">KYC Verification Status</CardTitle>
+                  <CardDescription>Breakdown of government identity submissions</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between rounded-lg bg-surface/70 p-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-2.5 w-2.5 rounded-full bg-warning" />
+                      <span className="text-sm font-medium">Pending Review</span>
+                    </div>
+                    <Badge variant="warning">{pendingKycCount}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg bg-surface/70 p-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-2.5 w-2.5 rounded-full bg-success" />
+                      <span className="text-sm font-medium">Approved / Verified</span>
+                    </div>
+                    <Badge variant="success">{approvedKycCount}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg bg-surface/70 p-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-2.5 w-2.5 rounded-full bg-destructive" />
+                      <span className="text-sm font-medium">Rejected Documents</span>
+                    </div>
+                    <Badge variant="destructive">{rejectedKycCount}</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Real Live Microservice Health Overview */}
+              <Card className="shadow-card border-border/80">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base">Live Microservices</CardTitle>
+                    <CardDescription>Real-time roundtrip API response times</CardDescription>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs"
+                    onClick={() => setActiveTab("health")}
+                  >
+                    Details
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {healthData.map((svc) => (
+                    <div
+                      key={svc.key}
+                      className="flex items-center justify-between rounded-lg bg-surface/70 p-2.5"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            "h-2 w-2 rounded-full",
+                            svc.status === "UP" ? "bg-success" : "bg-destructive",
+                          )}
+                        />
+                        <span className="text-xs font-medium text-foreground">{svc.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[11px] text-muted-foreground">
+                          {svc.latencyMs}ms
+                        </span>
+                        <Badge
+                          variant={svc.status === "UP" ? "success" : "destructive"}
+                          className="text-[10px] py-0 px-1.5"
+                        >
+                          {svc.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Recent Platform Activity */}
+            <Card className="shadow-card border-border/80">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Recent Platform Transactions</CardTitle>
+                  <CardDescription>Live feed of latest financial operations</CardDescription>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setActiveTab("transactions")}
+                  className="text-xs"
+                >
+                  View All Transactions
+                </Button>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {Object.keys(summary?.volumeByType || {}).length === 0 ? (
+              <CardContent>
+                {allTxns.length === 0 ? (
                   <p className="py-6 text-center text-sm text-muted-foreground">
-                    No transactions recorded yet
+                    No system transactions found.
                   </p>
                 ) : (
-                  Object.entries(summary?.volumeByType || {}).map(([type, vol]) => (
-                    <div key={type} className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0">
-                      <div>
-                        <p className="font-medium text-foreground">{type.replace("_", " ")}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {summary?.countByType?.[type] ?? 0} transactions
-                        </p>
-                      </div>
-                      <span className="font-semibold text-foreground">{formatINR(Number(vol))}</span>
-                    </div>
-                  ))
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Reference ID</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Counterparty</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Timestamp</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {allTxns.slice(0, 5).map((t) => (
+                          <TableRow key={t.id}>
+                            <TableCell className="font-mono text-xs font-medium text-foreground">
+                              {t.txn_ref || t.id}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">
+                                {t.type}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {t.receiver_upi_id ? (
+                                <span>To: {t.receiver_upi_id}</span>
+                              ) : t.sender_upi_id ? (
+                                <span>From: {t.sender_upi_id}</span>
+                              ) : (
+                                <span>Wallet Direct</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="font-semibold">{formatINR(t.amount)}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  t.status === "SUCCESS"
+                                    ? "success"
+                                    : t.status === "FAILED"
+                                      ? "destructive"
+                                      : "warning"
+                                }
+                              >
+                                {t.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {new Date(t.created_at).toLocaleString()}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
-
-            <Card className="shadow-card">
-              <CardHeader>
-                <CardTitle className="text-lg">System Quick Health</CardTitle>
-                <CardDescription>Services, message broker, and databases status</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between rounded-lg bg-surface p-3">
-                  <div className="flex items-center gap-3">
-                    <span className="h-2.5 w-2.5 rounded-full bg-success" />
-                    <span className="text-sm font-medium">Eureka Service Discovery</span>
-                  </div>
-                  <Badge variant="success">Online :8761</Badge>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-surface p-3">
-                  <div className="flex items-center gap-3">
-                    <span className="h-2.5 w-2.5 rounded-full bg-success" />
-                    <span className="text-sm font-medium">Spring Cloud API Gateway</span>
-                  </div>
-                  <Badge variant="success">Online :8089</Badge>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-surface p-3">
-                  <div className="flex items-center gap-3">
-                    <span className="h-2.5 w-2.5 rounded-full bg-success" />
-                    <span className="text-sm font-medium">RabbitMQ & Redis Cache</span>
-                  </div>
-                  <Badge variant="success">Active</Badge>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-surface p-3">
-                  <div className="flex items-center gap-3">
-                    <span className="h-2.5 w-2.5 rounded-full bg-success" />
-                    <span className="text-sm font-medium">MySQL Microservice DBs</span>
-                  </div>
-                  <Badge variant="success">4 Instances Healthy</Badge>
-                </div>
-              </CardContent>
-            </Card>
           </div>
-
-          {/* Recent Platform Activity */}
-          <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="text-lg">Recent System Transactions</CardTitle>
-                <CardDescription>Real-time view of latest platform transactions</CardDescription>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => setActiveTab("transactions")}>
-                View All
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {allTxns.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  No system transactions found.
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Reference</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Sender / Receiver</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Timestamp</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {allTxns.slice(0, 5).map((t) => (
-                        <TableRow key={t.id}>
-                          <TableCell className="font-mono text-xs">{t.txn_ref || t.id}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{t.type}</Badge>
-                          </TableCell>
-                          <TableCell className="text-xs">
-                            {t.receiver_upi_id ? (
-                              <span>To: {t.receiver_upi_id}</span>
-                            ) : t.sender_upi_id ? (
-                              <span>From: {t.sender_upi_id}</span>
-                            ) : (
-                              <span>System</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="font-semibold">{formatINR(t.amount)}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                t.status === "SUCCESS"
-                                  ? "success"
-                                  : t.status === "FAILED"
-                                    ? "destructive"
-                                    : "warning"
-                              }
-                            >
-                              {t.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {new Date(t.created_at).toLocaleString()}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+        )}
 
         {/* 2. KYC REVIEWS TAB */}
-        <TabsContent value="kyc" className="space-y-6">
-          <Card className="shadow-card">
+        {activeTab === "kyc" && (
+          <Card className="shadow-card border-border/80">
             <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-lg">KYC Document Verification</CardTitle>
+                <CardTitle className="text-lg">KYC Document Verification Queue</CardTitle>
                 <CardDescription>
                   Review submitted government identity documents and grant tier-1 wallet limits.
                 </CardDescription>
@@ -454,7 +542,9 @@ function AdminPage() {
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <CheckCircle2 className="h-10 w-10 text-muted-foreground/60" />
                   <p className="mt-2 text-sm font-medium">No KYC requests in this state</p>
-                  <p className="text-xs text-muted-foreground">All submitted requests are up to date.</p>
+                  <p className="text-xs text-muted-foreground">
+                    All submitted verification requests are processed.
+                  </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -479,9 +569,7 @@ function AdminPage() {
                           <TableCell>
                             <Badge variant="outline">{kyc.docType}</Badge>
                           </TableCell>
-                          <TableCell className="font-mono text-xs">
-                            •••• {kyc.docLast4}
-                          </TableCell>
+                          <TableCell className="font-mono text-xs">•••• {kyc.docLast4}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {kyc.submittedAt ? new Date(kyc.submittedAt).toLocaleString() : "—"}
                           </TableCell>
@@ -540,14 +628,14 @@ function AdminPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        )}
 
         {/* 3. USER MANAGEMENT TAB */}
-        <TabsContent value="users" className="space-y-6">
-          <Card className="shadow-card">
+        {activeTab === "users" && (
+          <Card className="shadow-card border-border/80">
             <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-lg">Registered Users ({filteredUsers.length})</CardTitle>
+                <CardTitle className="text-lg">User Accounts ({filteredUsers.length})</CardTitle>
                 <CardDescription>
                   Search user profiles, monitor KYC status, and activate or suspend platform access.
                 </CardDescription>
@@ -675,11 +763,11 @@ function AdminPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        )}
 
         {/* 4. ALL TRANSACTIONS AUDIT TAB */}
-        <TabsContent value="transactions" className="space-y-6">
-          <Card className="shadow-card">
+        {activeTab === "transactions" && (
+          <Card className="shadow-card border-border/80">
             <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle className="text-lg">System Transaction Audit ({filteredTxns.length})</CardTitle>
@@ -782,8 +870,101 @@ function AdminPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+        )}
+
+        {/* 5. SERVICES HEALTH TAB */}
+        {activeTab === "health" && (
+          <div className="space-y-6">
+            <Card className="shadow-card border-border/80">
+              <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="text-lg">Microservices Live Health Diagnostics</CardTitle>
+                  <CardDescription>
+                    Real-time ping probes testing latency, connectivity, and circuit breaker status across all services.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchHealth()}
+                  disabled={isFetchingHealth}
+                  className="gap-2 text-xs"
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", isFetchingHealth && "animate-spin")} />
+                  {isFetchingHealth ? "Probing Services..." : "Ping Now"}
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {healthData.map((svc) => (
+                    <div
+                      key={svc.key}
+                      className="rounded-xl border border-border/70 bg-card p-4 shadow-sm space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className={cn(
+                              "h-3 w-3 rounded-full",
+                              svc.status === "UP" ? "bg-success" : "bg-destructive",
+                            )}
+                          />
+                          <span className="font-semibold text-foreground text-sm">{svc.name}</span>
+                        </div>
+                        <Badge variant={svc.status === "UP" ? "success" : "destructive"}>
+                          {svc.status}
+                        </Badge>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs text-muted-foreground">
+                        <div className="flex items-center justify-between">
+                          <span>Endpoint Probe:</span>
+                          <span className="font-mono text-foreground">{svc.endpoint}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Roundtrip Latency:</span>
+                          <span className="font-mono font-medium text-foreground">
+                            {svc.latencyMs} ms
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Last Checked:</span>
+                          <span>{new Date(svc.lastChecked).toLocaleTimeString()}</span>
+                        </div>
+                        {svc.error && (
+                          <div className="mt-2 rounded bg-destructive/10 p-2 text-destructive text-[11px]">
+                            {svc.error}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6 rounded-xl border border-border/60 bg-surface/60 p-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                    <Zap className="h-4 w-4 text-highlight-foreground" /> Infrastructure Topology
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-muted-foreground">
+                    <div className="rounded-lg bg-card p-2.5 border border-border/50">
+                      <p className="font-medium text-foreground">Service Registry</p>
+                      <p className="mt-0.5">Eureka Cluster (:8761)</p>
+                    </div>
+                    <div className="rounded-lg bg-card p-2.5 border border-border/50">
+                      <p className="font-medium text-foreground">Message Broker</p>
+                      <p className="mt-0.5">RabbitMQ AMQP (:5672)</p>
+                    </div>
+                    <div className="rounded-lg bg-card p-2.5 border border-border/50">
+                      <p className="font-medium text-foreground">Cache Layer</p>
+                      <p className="mt-0.5">Redis Distributed Cache (:6379)</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
 
       {/* Reject Remarks Dialog */}
       <Dialog
@@ -841,6 +1022,6 @@ function AdminPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminShell>
   );
 }

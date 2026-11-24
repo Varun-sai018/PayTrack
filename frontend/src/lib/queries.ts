@@ -6,12 +6,13 @@ import {
   type KycItem,
   type LedgerEntry,
   type Profile,
+  type ServiceHealth,
   type Transaction,
   type TransactionSummary,
   type Wallet,
 } from "./api";
 
-export type { Profile, Wallet, LedgerEntry, Transaction, Expense, AdminUser, KycItem, TransactionSummary };
+export type { Profile, Wallet, LedgerEntry, Transaction, Expense, AdminUser, KycItem, TransactionSummary, ServiceHealth };
 
 export const profileQuery = queryOptions({
   queryKey: ["profile"],
@@ -79,6 +80,14 @@ export const adminTransactionsQuery = (filters?: { status?: string; type?: strin
       return api.getAdminAllTransactions(filters);
     },
   });
+
+export const adminHealthQuery = queryOptions({
+  queryKey: ["admin-health"],
+  queryFn: async (): Promise<ServiceHealth[]> => {
+    return api.checkServicesHealth();
+  },
+  refetchInterval: 15000, // live auto-refresh every 15s
+});
 
 /** Money moves touch the wallet, ledger, transactions and expenses at once. */
 export const MONEY_QUERY_KEYS = [["wallet"], ["ledger"], ["transactions"], ["expenses"]] as const;
