@@ -9,19 +9,21 @@ import java.util.Map;
 public class AuthorizationConfig {
 
     public Map<String, List<String>> routeRoles() {
-        return Map.of(
-                "GET:/api/wallets",
-                List.of("ROLE_ADMIN", "ROLE_CUSTOMER"),
-                "POST:/api/wallets",
-                List.of("ROLE_ADMIN", "ROLE_CUSTOMER"),
-                "GET:/api/transactions",
-                List.of("ROLE_ADMIN", "ROLE_CUSTOMER"),
-                "POST:/api/transactions",
-                List.of("ROLE_ADMIN", "ROLE_CUSTOMER"),
-                "GET:/api/expenses",
-                List.of("ROLE_ADMIN", "ROLE_CUSTOMER"),
-                "POST:/api/expenses",
-                List.of("ROLE_ADMIN", "ROLE_CUSTOMER")
+        return Map.ofEntries(
+                Map.entry("/api/auth/admin", List.of("ROLE_ADMIN")),
+                Map.entry("/api/transactions/admin", List.of("ROLE_ADMIN")),
+                Map.entry("GET:/api/wallets", List.of("ROLE_ADMIN", "ROLE_CUSTOMER")),
+                Map.entry("POST:/api/wallets", List.of("ROLE_ADMIN", "ROLE_CUSTOMER")),
+                Map.entry("PUT:/api/wallets", List.of("ROLE_ADMIN", "ROLE_CUSTOMER")),
+                Map.entry("DELETE:/api/wallets", List.of("ROLE_ADMIN", "ROLE_CUSTOMER")),
+                Map.entry("GET:/api/transactions", List.of("ROLE_ADMIN", "ROLE_CUSTOMER")),
+                Map.entry("POST:/api/transactions", List.of("ROLE_ADMIN", "ROLE_CUSTOMER")),
+                Map.entry("PUT:/api/transactions", List.of("ROLE_ADMIN", "ROLE_CUSTOMER")),
+                Map.entry("DELETE:/api/transactions", List.of("ROLE_ADMIN", "ROLE_CUSTOMER")),
+                Map.entry("GET:/api/expenses", List.of("ROLE_ADMIN", "ROLE_CUSTOMER")),
+                Map.entry("POST:/api/expenses", List.of("ROLE_ADMIN", "ROLE_CUSTOMER")),
+                Map.entry("PUT:/api/expenses", List.of("ROLE_ADMIN", "ROLE_CUSTOMER")),
+                Map.entry("DELETE:/api/expenses", List.of("ROLE_ADMIN", "ROLE_CUSTOMER"))
         );
     }
 }

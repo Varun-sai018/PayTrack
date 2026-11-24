@@ -117,12 +117,6 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(request, "KYC reviewed"));
     }
 
-    @GetMapping("/internal/auth/users/by-upi/{upiId}")
-    public ResponseEntity<ApiResponse<UserLookupResponse>> getByUpi(@PathVariable String upiId) {
-        UserLookupResponse userLookup = authService.lookupUserByUpi(upiId);
-        return ResponseEntity.ok(ApiResponse.success(userLookup, "User found"));
-    }
-
     @GetMapping("/health")
     public ResponseEntity<String> healthCheck() {
         return ResponseEntity.ok("Auth Service is running");

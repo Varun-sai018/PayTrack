@@ -21,14 +21,27 @@ public class Wallet {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(name = "user_id", unique = true)
     private String userId;
 
-    @Column(nullable = false)
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "owner_type", nullable = false)
+    private OwnerType ownerType = OwnerType.USER;
+
+    @Column(name = "system_name", unique = true)
+    private String systemName;
+
+    @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal balance;
 
+    @Builder.Default
     @Column(nullable = false, length = 3)
-    private String currency;
+    private String currency = "INR";
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -44,12 +57,19 @@ public class Wallet {
             balance = BigDecimal.ZERO;
         }
         if (currency == null) {
-            currency = "USD";
+            currency = "INR";
+        }
+        if (ownerType == null) {
+            ownerType = OwnerType.USER;
         }
     }
 
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
+    }
+
+    public enum OwnerType {
+        USER, SYSTEM
     }
 }

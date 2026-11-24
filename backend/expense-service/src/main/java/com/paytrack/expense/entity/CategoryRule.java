@@ -18,21 +18,21 @@ import java.util.UUID;
 public class CategoryRule {
 
     @Id
-    @Column(name = "id")
+    @Column(name = "id", length = 36)
     private String id;
 
     @Column(name = "keyword", nullable = false, length = 255)
     private String keyword;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "category", nullable = false)
-    private Category category;
+    @Column(name = "category", nullable = false, length = 50)
+    private String category; // FOOD, TRANSPORT, HOUSING, ENTERTAINMENT, UTILITIES, HEALTHCARE, SHOPPING, EDUCATION, OTHER
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "match_on", nullable = false)
-    private MatchOn matchOn = MatchOn.NOTE;
+    @Column(name = "match_on", nullable = false, length = 20)
+    @Builder.Default
+    private String matchOn = "NOTE"; // NOTE, TXN_TYPE
 
     @Column(name = "priority", nullable = false)
+    @Builder.Default
     private int priority = 0;
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -43,21 +43,22 @@ public class CategoryRule {
 
     @PrePersist
     protected void onCreate() {
-        id = UUID.randomUUID().toString();
-        createdAt = LocalDateTime.now();
-        updatedAt = LocalDateTime.now();
+        if (id == null) {
+            id = UUID.randomUUID().toString();
+        }
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+        if (updatedAt == null) {
+            updatedAt = LocalDateTime.now();
+        }
+        if (matchOn == null) {
+            matchOn = "NOTE";
+        }
     }
 
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
-    }
-
-    public enum Category {
-        FOOD, TRANSPORT, HOUSING, ENTERTAINMENT, UTILITIES, HEALTHCARE, SHOPPING, EDUCATION, OTHER
-    }
-
-    public enum MatchOn {
-        NOTE, TXN_TYPE
     }
 }

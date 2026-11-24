@@ -15,6 +15,7 @@ public class JwtResponse {
 
     private String accessToken;
     private String refreshToken;
+    @Builder.Default
     private String tokenType = "Bearer";
     private LocalDateTime expiresAt;
     private UserDto user;

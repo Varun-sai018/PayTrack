@@ -147,4 +147,39 @@ public class JwtAuthenticationFilterTest {
                 .expectBody()
                 .jsonPath("$.message").isEqualTo("Auth Service is temporarily unavailable. Please try again later.");
     }
+
+    @Test
+    @DisplayName("Actuator health endpoint should be publicly accessible without token")
+    void testActuatorHealthPublic() {
+        webTestClient.get()
+                .uri("/actuator/health")
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    @DisplayName("Admin route with ROLE_CUSTOMER should return 403 Forbidden")
+    void testAdminRouteForbiddenForCustomer() {
+        String token = createToken("customer@test.com", List.of("ROLE_CUSTOMER"));
+        webTestClient.get()
+                .uri("/api/transactions/admin/all")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .exchange()
+                .expectStatus().isForbidden()
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(403)
+                .jsonPath("$.message").isEqualTo("Access Denied");
+    }
+
+    @Test
+    @DisplayName("Admin route with ROLE_ADMIN should pass authorization")
+    void testAdminRouteAllowedForAdmin() {
+        String token = createToken("admin@test.com", List.of("ROLE_ADMIN"));
+        webTestClient.get()
+                .uri("/api/transactions/admin/all")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .exchange()
+                // Passes authorization, then 5xx because downstream transaction-service isn't running
+                .expectStatus().is5xxServerError();
+    }
 }

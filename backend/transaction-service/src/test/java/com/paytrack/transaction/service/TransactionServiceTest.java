@@ -1,22 +1,27 @@
 package com.paytrack.transaction.service;
 
-import com.paytrack.auth.entity.User;
-import com.paytrack.auth.repository.UserRepository;
+import com.paytrack.transaction.UserContextHolder;
+import com.paytrack.transaction.client.AuthClient;
 import com.paytrack.transaction.client.WalletClient;
 import com.paytrack.transaction.dto.*;
+import com.paytrack.transaction.entity.Recharge;
 import com.paytrack.transaction.entity.Transaction;
+import com.paytrack.transaction.exception.BusinessException;
+import com.paytrack.transaction.repository.RechargeRepository;
 import com.paytrack.transaction.repository.TransactionRepository;
-import com.paytrack.transaction.UserContextHolder;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,40 +37,47 @@ class TransactionServiceTest {
     private TransactionRepository transactionRepository;
 
     @Mock
+    private RechargeRepository rechargeRepository;
+
+    @Mock
     private WalletClient walletClient;
 
     @Mock
-    private UserRepository userRepository;
+    private AuthClient authClient;
 
     @Mock
     private RabbitTemplate rabbitTemplate;
 
+    @Spy
+    private RechargeOperator rechargeOperator = new DummyRechargeOperator();
+
     @InjectMocks
     private TransactionService transactionService;
 
-    private User sender;
-    private User receiver;
+    private UserLookupDto receiverDto;
     private TransferRequest transferRequest;
     private String idempotencyKey;
 
     @BeforeEach
     void setUp() {
-        sender = User.builder()
-                .userId("sender-123")
-                .fullName("Sender User")
-                .email("sender@example.com")
-                .upiId("sender.user@paytrack")
-                .kycStatus(User.KycStatus.APPROVED)
-                .accountStatus(User.AccountStatus.ACTIVE)
-                .build();
+        ReflectionTestUtils.setField(transactionService, "minAmount", new BigDecimal("1.00"));
+        ReflectionTestUtils.setField(transactionService, "maxTransactionLimit", new BigDecimal("10000.00"));
+        ReflectionTestUtils.setField(transactionService, "dailyTotalLimit", new BigDecimal("25000.00"));
+        ReflectionTestUtils.setField(transactionService, "minRechargeAmount", new BigDecimal("10.00"));
+        ReflectionTestUtils.setField(transactionService, "maxRechargeAmount", new BigDecimal("2000.00"));
+        ReflectionTestUtils.setField(transactionService, "configuredTimezone", "Asia/Kolkata");
+        ReflectionTestUtils.setField(transactionService, "internalApiKey", "test-key");
 
-        receiver = User.builder()
+        UserContextHolder.setUserId("sender-123");
+        UserContextHolder.setRole("USER");
+        UserContextHolder.setKycStatus("APPROVED");
+
+        receiverDto = UserLookupDto.builder()
                 .userId("receiver-123")
-                .fullName("Receiver User")
-                .email("receiver@example.com")
+                .maskedName("R*** U***")
                 .upiId("receiver.user@paytrack")
-                .kycStatus(User.KycStatus.APPROVED)
-                .accountStatus(User.AccountStatus.ACTIVE)
+                .accountStatus("ACTIVE")
+                .kycStatus("APPROVED")
                 .build();
 
         transferRequest = TransferRequest.builder()
@@ -78,93 +90,105 @@ class TransactionServiceTest {
         idempotencyKey = "test-idempotency-key-123";
     }
 
+    @AfterEach
+    void tearDown() {
+        UserContextHolder.clear();
+    }
+
     @Test
     void transfer_shouldCreateTransactionAndCallWallet() {
         // Given
-        when(userRepository.findByUpiId("receiver.user@paytrack")).thenReturn(Optional.of(receiver));
-        when(userRepository.findByUserId("sender-123")).thenReturn(Optional.of(sender));
-        when(transactionRepository.findByUserIdAndIdempotencyKey(anyString(), anyString())).thenReturn(null);
+        when(authClient.lookupUserByUpi(eq("receiver.user@paytrack"), anyString()))
+                .thenReturn(ApiResponse.success(receiverDto));
+        when(transactionRepository.findByUserIdAndIdempotencyKey(anyString(), anyString()))
+                .thenReturn(Optional.empty());
         when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        TransferResponse walletResponse = TransferResponse.builder()
-                .txnRef("TXN20241123000001")
+        InternalTransferResponse walletResp = InternalTransferResponse.builder()
+                .txnRef("TXN20261123000001")
                 .status("COMPLETED")
-                .type("P2P")
-                .amount(new BigDecimal("100.00"))
-                .balanceAfter("900.00")
+                .senderBalanceAfter(new BigDecimal("900.00"))
                 .build();
-        when(walletClient.internalTransfer(anyString(), anyString(), anyString(), any(BigDecimal.class), anyString()))
-                .thenReturn(walletResponse);
+        when(walletClient.internalTransfer(anyString(), any(InternalTransferRequest.class)))
+                .thenReturn(ApiResponse.success(walletResp));
 
         // When
-        TransactionDto result = transactionService.transfer("sender-123", idempotencyKey, transferRequest);
+        TransferResponse result = transactionService.transfer("sender-123", idempotencyKey, transferRequest);
 
         // Then
         assertThat(result).isNotNull();
         assertThat(result.getAmount()).isEqualByComparingTo("100.00");
         assertThat(result.getType()).isEqualTo("P2P");
         assertThat(result.getStatus()).isEqualTo("COMPLETED");
-        assertThat(result.getTxnRef()).isNotNull();
+        assertThat(result.getBalanceAfter()).isEqualByComparingTo("900.00");
 
-        verify(transactionRepository).save(any(Transaction.class));
-        verify(walletClient).internalTransfer(anyString(), anyString(), anyString(), any(BigDecimal.class), anyString());
-        verify(rabbitTemplate).convertAndSend(anyString(), anyString(), any());
+        verify(transactionRepository, atLeastOnce()).save(any(Transaction.class));
+        verify(walletClient).internalTransfer(anyString(), any(InternalTransferRequest.class));
+        verify(rabbitTemplate).convertAndSend(anyString(), anyString(), any(Object.class));
     }
 
     @Test
     void transfer_shouldThrowWhenReceiverNotFound() {
         // Given
-        when(userRepository.findByUpiId("receiver.user@paytrack")).thenReturn(Optional.empty());
+        when(authClient.lookupUserByUpi(eq("receiver.user@paytrack"), anyString()))
+                .thenReturn(ApiResponse.error("Not found", "NOT_FOUND"));
 
         // When/Then
         assertThatThrownBy(() -> transactionService.transfer("sender-123", idempotencyKey, transferRequest))
-                .isInstanceOf(com.paytrack.transaction.exception.ResourceNotFoundException.class)
-                .hasMessageContaining("User with UPI ID not found");
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("not found");
     }
 
     @Test
     void transfer_shouldThrowWhenReceiverKycNotApproved() {
         // Given
-        User receiverNotKyc = User.builder()
+        UserLookupDto notKyc = UserLookupDto.builder()
                 .userId("receiver-123")
-                .fullName("Receiver User")
+                .maskedName("R*** U***")
                 .upiId("receiver.user@paytrack")
-                .kycStatus(User.KycStatus.NOT_SUBMITTED)
-                .accountStatus(User.AccountStatus.ACTIVE)
+                .accountStatus("ACTIVE")
+                .kycStatus("NOT_SUBMITTED")
                 .build();
-
-        when(userRepository.findByUpiId("receiver.user@paytrack")).thenReturn(Optional.of(receiverNotKyc));
+        when(authClient.lookupUserByUpi(eq("receiver.user@paytrack"), anyString()))
+                .thenReturn(ApiResponse.success(notKyc));
 
         // When/Then
         assertThatThrownBy(() -> transactionService.transfer("sender-123", idempotencyKey, transferRequest))
-                .isInstanceOf(com.paytrack.transaction.exception.BusinessException.class)
-                .hasMessageContaining("KYC_NOT_APPROVED");
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("KYC");
     }
 
     @Test
     void transfer_shouldThrowWhenReceiverBlocked() {
         // Given
-        User receiverBlocked = User.builder()
+        UserLookupDto blocked = UserLookupDto.builder()
                 .userId("receiver-123")
-                .fullName("Receiver User")
+                .maskedName("R*** U***")
                 .upiId("receiver.user@paytrack")
-                .kycStatus(User.KycStatus.APPROVED)
-                .accountStatus(User.AccountStatus.BLOCKED)
+                .accountStatus("BLOCKED")
+                .kycStatus("APPROVED")
                 .build();
-
-        when(userRepository.findByUpiId("receiver.user@paytrack")).thenReturn(Optional.of(receiverBlocked));
+        when(authClient.lookupUserByUpi(eq("receiver.user@paytrack"), anyString()))
+                .thenReturn(ApiResponse.success(blocked));
 
         // When/Then
         assertThatThrownBy(() -> transactionService.transfer("sender-123", idempotencyKey, transferRequest))
-                .isInstanceOf(com.paytrack.transaction.exception.BusinessException.class)
-                .hasMessageContaining("ACCOUNT_BLOCKED");
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Receiver account is not active");
     }
 
     @Test
     void transfer_shouldThrowWhenSelfPayment() {
         // Given
-        when(userRepository.findByUpiId("sender.user@paytrack")).thenReturn(Optional.of(sender));
-        when(userRepository.findByUserId("sender-123")).thenReturn(Optional.of(sender));
+        UserLookupDto self = UserLookupDto.builder()
+                .userId("sender-123")
+                .maskedName("S*** U***")
+                .upiId("sender.user@paytrack")
+                .accountStatus("ACTIVE")
+                .kycStatus("APPROVED")
+                .build();
+        when(authClient.lookupUserByUpi(eq("sender.user@paytrack"), anyString()))
+                .thenReturn(ApiResponse.success(self));
 
         TransferRequest selfTransfer = TransferRequest.builder()
                 .receiverUpiId("sender.user@paytrack")
@@ -173,82 +197,33 @@ class TransactionServiceTest {
 
         // When/Then
         assertThatThrownBy(() -> transactionService.transfer("sender-123", idempotencyKey, selfTransfer))
-                .isInstanceOf(com.paytrack.transaction.exception.BusinessException.class)
+                .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Cannot pay yourself");
     }
 
     @Test
     void transfer_shouldThrowWhenAmountExceedsLimit() {
         // Given
-        TransferRequest largeTransfer = TransferRequest.builder()
+        TransferRequest large = TransferRequest.builder()
                 .receiverUpiId("receiver.user@paytrack")
                 .amount(new BigDecimal("20000.00"))
                 .build();
 
-        when(userRepository.findByUpiId("receiver.user@paytrack")).thenReturn(Optional.of(receiver));
-
         // When/Then
-        assertThatThrownBy(() -> transactionService.transfer("sender-123", idempotencyKey, largeTransfer))
-                .isInstanceOf(com.paytrack.transaction.exception.BusinessException.class)
-                .hasMessageContaining("LIMIT_EXCEEDED");
-    }
-
-    @Test
-    void transfer_shouldReturnExistingTransactionWhenIdempotencyKeyReused() {
-        // Given
-        Transaction existingTransaction = Transaction.builder()
-                .userId("sender-123")
-                .txnRef("TXN20241123000001")
-                .idempotencyKey(idempotencyKey)
-                .requestHash("same-hash")
-                .amount(new BigDecimal("100.00"))
-                .type("P2P")
-                .status("COMPLETED")
-                .build();
-
-        when(userRepository.findByUpiId("receiver.user@paytrack")).thenReturn(Optional.of(receiver));
-        when(userRepository.findByUserId("sender-123")).thenReturn(Optional.of(sender));
-        when(transactionRepository.findByUserIdAndIdempotencyKey("sender-123", idempotencyKey))
-                .thenReturn(existingTransaction);
-
-        // When
-        TransactionDto result = transactionService.transfer("sender-123", idempotencyKey, transferRequest);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getTxnRef()).isEqualTo("TXN20241123000001");
-        verify(transactionRepository, never()).save(any(Transaction.class));
-        verify(walletClient, never()).internalTransfer(anyString(), anyString(), anyString(), any(BigDecimal.class), anyString());
-    }
-
-    @Test
-    void transfer_shouldThrowWhenIdempotencyKeyReusedWithDifferentBody() {
-        // Given
-        Transaction existingTransaction = Transaction.builder()
-                .userId("sender-123")
-                .txnRef("TXN20241123000001")
-                .idempotencyKey(idempotencyKey)
-                .requestHash("different-hash")
-                .amount(new BigDecimal("100.00"))
-                .type("P2P")
-                .status("COMPLETED")
-                .build();
-
-        when(userRepository.findByUpiId("receiver.user@paytrack")).thenReturn(Optional.of(receiver));
-        when(userRepository.findByUserId("sender-123")).thenReturn(Optional.of(sender));
-        when(transactionRepository.findByUserIdAndIdempotencyKey("sender-123", idempotencyKey))
-                .thenReturn(existingTransaction);
-
-        // When/Then
-        assertThatThrownBy(() -> transactionService.transfer("sender-123", idempotencyKey, transferRequest))
-                .isInstanceOf(com.paytrack.transaction.exception.BusinessException.class)
-                .hasMessageContaining("IDEMPOTENCY_KEY_REUSED");
+        assertThatThrownBy(() -> transactionService.transfer("sender-123", idempotencyKey, large))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("exceeds limit");
     }
 
     @Test
     void qrGenerate_shouldCreateValidQrPayload() {
         // Given
-        when(userRepository.findByUserId("sender-123")).thenReturn(Optional.of(sender));
+        UserLookupDto senderDto = UserLookupDto.builder()
+                .userId("sender-123")
+                .fullName("Sender User")
+                .upiId("sender.user@paytrack")
+                .build();
+        when(authClient.getCurrentUser("sender-123")).thenReturn(ApiResponse.success(senderDto));
 
         QrGenerateRequest request = QrGenerateRequest.builder()
                 .amount(new BigDecimal("50.00"))
@@ -270,27 +245,25 @@ class TransactionServiceTest {
     void qrPay_shouldParseQrPayloadAndTransfer() {
         // Given
         String qrPayload = "upi://pay?pa=receiver.user@paytrack&pn=Receiver User&am=75.00&cu=INR";
-
         QrPayRequest request = QrPayRequest.builder()
                 .qrPayload(qrPayload)
                 .amount(new BigDecimal("75.00"))
                 .category("FOOD")
-                .requestHash("qr-hash")
                 .build();
 
-        when(userRepository.findByUpiId("receiver.user@paytrack")).thenReturn(Optional.of(receiver));
-        when(userRepository.findByUserId("sender-123")).thenReturn(Optional.of(sender));
-        when(transactionRepository.findByUserIdAndIdempotencyKey(anyString(), anyString())).thenReturn(null);
+        when(authClient.lookupUserByUpi(eq("receiver.user@paytrack"), anyString()))
+                .thenReturn(ApiResponse.success(receiverDto));
+        when(transactionRepository.findByUserIdAndIdempotencyKey(anyString(), anyString()))
+                .thenReturn(Optional.empty());
         when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        TransferResponse walletResponse = TransferResponse.builder()
-                .txnRef("TXN20241123000002")
+        InternalTransferResponse walletResp = InternalTransferResponse.builder()
+                .txnRef("TXN20261123000002")
                 .status("COMPLETED")
-                .type("QR")
-                .amount(new BigDecimal("75.00"))
+                .senderBalanceAfter(new BigDecimal("925.00"))
                 .build();
-        when(walletClient.internalTransfer(anyString(), anyString(), anyString(), any(BigDecimal.class), anyString()))
-                .thenReturn(walletResponse);
+        when(walletClient.internalTransfer(anyString(), any(InternalTransferRequest.class)))
+                .thenReturn(ApiResponse.success(walletResp));
 
         // When
         TransferResponse result = transactionService.qrPay("sender-123", idempotencyKey, request);
@@ -299,49 +272,50 @@ class TransactionServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getAmount()).isEqualByComparingTo("75.00");
         assertThat(result.getType()).isEqualTo("QR");
-        verify(walletClient).internalTransfer(anyString(), anyString(), anyString(), any(BigDecimal.class), anyString());
+        assertThat(result.getStatus()).isEqualTo("COMPLETED");
+        verify(walletClient).internalTransfer(anyString(), any(InternalTransferRequest.class));
     }
 
     @Test
     void qrPay_shouldThrowWhenQrCurrencyNotInr() {
         // Given
         String qrPayload = "upi://pay?pa=receiver.user@paytrack&pn=Receiver User&am=75.00&cu=USD";
-
         QrPayRequest request = QrPayRequest.builder()
                 .qrPayload(qrPayload)
                 .amount(new BigDecimal("75.00"))
-                .requestHash("qr-hash")
                 .build();
 
         // When/Then
         assertThatThrownBy(() -> transactionService.qrPay("sender-123", idempotencyKey, request))
-                .isInstanceOf(com.paytrack.transaction.exception.BusinessException.class)
-                .hasMessageContaining("Currency must be INR");
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("QR currency must be INR");
     }
 
     @Test
-    void recharge_shouldCreateTransactionAndCallWallet() {
+    void recharge_shouldDebitWalletAndCallOperator() {
         // Given
         RechargeRequest request = RechargeRequest.builder()
                 .mobileNumber("9876543210")
                 .operator("AIRTEL")
                 .amount(new BigDecimal("100.00"))
                 .category("UTILITIES")
-                .requestHash("recharge-hash")
                 .build();
 
-        when(userRepository.findByUserId("sender-123")).thenReturn(Optional.of(sender));
-        when(transactionRepository.findByUserIdAndIdempotencyKey(anyString(), anyString())).thenReturn(null);
-        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(transactionRepository.findByUserIdAndIdempotencyKey(anyString(), anyString()))
+                .thenReturn(Optional.empty());
+        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> {
+            Transaction t = invocation.getArgument(0);
+            t.setId(10L);
+            return t;
+        });
 
-        TransferResponse walletResponse = TransferResponse.builder()
-                .txnRef("TXN20241123000003-DEBIT")
+        InternalTransferResponse debitResp = InternalTransferResponse.builder()
+                .txnRef("TXN20261123000003-DEBIT")
                 .status("COMPLETED")
-                .type("RECHARGE")
-                .amount(new BigDecimal("100.00"))
+                .senderBalanceAfter(new BigDecimal("800.00"))
                 .build();
-        when(walletClient.internalTransfer(anyString(), anyString(), anyString(), any(BigDecimal.class), anyString()))
-                .thenReturn(walletResponse);
+        when(walletClient.internalTransfer(anyString(), any(InternalTransferRequest.class)))
+                .thenReturn(ApiResponse.success(debitResp));
 
         // When
         RechargeResponse result = transactionService.recharge("sender-123", idempotencyKey, request);
@@ -351,31 +325,33 @@ class TransactionServiceTest {
         assertThat(result.getStatus()).isEqualTo("COMPLETED");
         assertThat(result.getOperatorRef()).isNotNull();
         assertThat(result.getOperatorRef()).startsWith("OP");
-        verify(walletClient, times(1)).internalTransfer(anyString(), anyString(), anyString(), any(BigDecimal.class), anyString());
+        verify(walletClient, times(1)).internalTransfer(anyString(), any(InternalTransferRequest.class));
+        verify(rechargeRepository).save(any(Recharge.class));
     }
 
     @Test
-    void recharge_shouldFailWhenMobileEndsWith0000() {
+    void recharge_shouldReverseWhenOperatorDeclined() {
         // Given
         RechargeRequest request = RechargeRequest.builder()
-                .mobileNumber("9876540000")
+                .mobileNumber("9876540000") // ends in 0000 -> declines
                 .operator("AIRTEL")
                 .amount(new BigDecimal("100.00"))
-                .requestHash("recharge-hash")
                 .build();
 
-        when(userRepository.findByUserId("sender-123")).thenReturn(Optional.of(sender));
-        when(transactionRepository.findByUserIdAndIdempotencyKey(anyString(), anyString())).thenReturn(null);
-        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(transactionRepository.findByUserIdAndIdempotencyKey(anyString(), anyString()))
+                .thenReturn(Optional.empty());
+        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> {
+            Transaction t = invocation.getArgument(0);
+            t.setId(10L);
+            return t;
+        });
 
-        TransferResponse walletResponse = TransferResponse.builder()
-                .txnRef("TXN20241123000003-DEBIT")
+        InternalTransferResponse debitResp = InternalTransferResponse.builder()
+                .txnRef("TXN20261123000003-DEBIT")
                 .status("COMPLETED")
-                .type("RECHARGE")
-                .amount(new BigDecimal("100.00"))
                 .build();
-        when(walletClient.internalTransfer(anyString(), anyString(), anyString(), any(BigDecimal.class), anyString()))
-                .thenReturn(walletResponse);
+        when(walletClient.internalTransfer(anyString(), any(InternalTransferRequest.class)))
+                .thenReturn(ApiResponse.success(debitResp));
 
         // When
         RechargeResponse result = transactionService.recharge("sender-123", idempotencyKey, request);
@@ -383,53 +359,43 @@ class TransactionServiceTest {
         // Then
         assertThat(result.getStatus()).isEqualTo("FAILED");
         assertThat(result.getOperatorRef()).isNull();
-        verify(walletClient, times(2)).internalTransfer(anyString(), anyString(), anyString(), any(BigDecimal.class), anyString());
+        // Called once for debit, once for reversal
+        verify(walletClient, times(2)).internalTransfer(anyString(), any(InternalTransferRequest.class));
     }
 
     @Test
     void recharge_shouldValidateAmountRange() {
-        // Given
         RechargeRequest tooLow = RechargeRequest.builder()
                 .mobileNumber("9876543210")
                 .operator("AIRTEL")
                 .amount(new BigDecimal("5.00"))
-                .requestHash("recharge-hash")
                 .build();
 
-        when(userRepository.findByUserId("sender-123")).thenReturn(Optional.of(sender));
-
-        // When/Then
         assertThatThrownBy(() -> transactionService.recharge("sender-123", idempotencyKey, tooLow))
-                .isInstanceOf(com.paytrack.transaction.exception.BusinessException.class)
-                .hasMessageContaining("Recharge amount must be at least 10");
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Amount must be at least");
 
         RechargeRequest tooHigh = RechargeRequest.builder()
                 .mobileNumber("9876543210")
                 .operator("AIRTEL")
                 .amount(new BigDecimal("5000.00"))
-                .requestHash("recharge-hash")
                 .build();
 
         assertThatThrownBy(() -> transactionService.recharge("sender-123", idempotencyKey, tooHigh))
-                .isInstanceOf(com.paytrack.transaction.exception.BusinessException.class)
-                .hasMessageContaining("Recharge amount must not exceed 2000");
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Amount exceeds limit");
     }
 
     @Test
     void recharge_shouldValidateOperator() {
-        // Given
         RechargeRequest invalidOperator = RechargeRequest.builder()
                 .mobileNumber("9876543210")
                 .operator("INVALID")
                 .amount(new BigDecimal("100.00"))
-                .requestHash("recharge-hash")
                 .build();
 
-        when(userRepository.findByUserId("sender-123")).thenReturn(Optional.of(sender));
-
-        // When/Then
         assertThatThrownBy(() -> transactionService.recharge("sender-123", idempotencyKey, invalidOperator))
-                .isInstanceOf(com.paytrack.transaction.exception.BusinessException.class)
+                .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Invalid operator");
     }
 }

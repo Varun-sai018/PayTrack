@@ -11,6 +11,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class UserLookupResponse {
 
+    private String userId;
     private String maskedName;
     private String upiId;
+    private String accountStatus;
+    private String kycStatus;
 }

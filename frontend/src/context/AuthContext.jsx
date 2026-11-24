@@ -24,8 +24,11 @@ export function AuthProvider({ children }) {
     setError(null)
     try {
       const response = await authApi.login({ email, password })
-      const { accessToken, user: userData } = response.data.data
+      const { accessToken, refreshToken, user: userData } = response.data.data
       localStorage.setItem('paytrack_token', accessToken)
+      if (refreshToken) {
+        localStorage.setItem('paytrack_refresh_token', refreshToken)
+      }
       localStorage.setItem('paytrack_user', JSON.stringify(userData))
       setToken(accessToken)
       setUser(userData)
@@ -51,8 +54,17 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    const refreshToken = localStorage.getItem('paytrack_refresh_token')
+    if (refreshToken) {
+      try {
+        await authApi.logout(refreshToken)
+      } catch (e) {
+        // Ignore logout network failure on client cleanup
+      }
+    }
     localStorage.removeItem('paytrack_token')
+    localStorage.removeItem('paytrack_refresh_token')
     localStorage.removeItem('paytrack_user')
     setToken(null)
     setUser(null)

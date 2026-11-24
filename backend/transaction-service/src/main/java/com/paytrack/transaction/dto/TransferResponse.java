@@ -20,6 +20,7 @@ public class TransferResponse {
     private BigDecimal amount;
     private String category;
     private String receiverUpiId;
-    private String balanceAfter;
+    private BigDecimal balanceAfter;
+    private String failureReason;
     private LocalDateTime createdAt;
 }

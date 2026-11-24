@@ -1,6 +1,7 @@
 package com.paytrack.wallet.config;
 
 import com.paytrack.wallet.filter.UserContextFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -19,14 +20,25 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    @Value("${gateway.secret:paytrack-internal-gateway-secret-2026}")
+    private String gatewaySecret;
+
+    @Value("${internal.api.key:paytrack-internal-api-key-2026}")
+    private String internalKey;
+
+    @Bean
+    public UserContextFilter userContextFilter() {
+        return new UserContextFilter(gatewaySecret, internalKey);
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .addFilterBefore(new UserContextFilter(), UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(userContextFilter(), UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/wallets/**").permitAll()
+                .requestMatchers("/api/wallets/**", "/api/gateway-sandbox/**", "/internal/**").permitAll()
                 .requestMatchers("/actuator/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .anyRequest().authenticated()
             )

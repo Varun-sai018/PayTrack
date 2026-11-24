@@ -71,4 +71,13 @@ public class JwtUtil {
         }
         return List.of();
     }
+
+    public String retrieveKycStatusFromToken(String token) {
+        var decoded = getDecodedToken(token);
+        var kycClaim = decoded.getClaim("kycStatus");
+        if (!kycClaim.isMissing() && !kycClaim.isNull()) {
+            return kycClaim.asString();
+        }
+        return "NOT_SUBMITTED";
+    }
 }

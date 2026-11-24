@@ -51,6 +51,10 @@ jwt:
   refresh-token-expiration: 604800000
   issuer: paytrack-auth
 
+internal:
+  api:
+    key: ${INTERNAL_API_KEY:paytrack-internal-api-key-2026}
+
 otp:
   expiration-minutes: 5
 

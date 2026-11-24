@@ -15,12 +15,16 @@ import java.time.LocalDateTime;
 public class TransactionDto {
 
     private Long id;
+    private String txnRef;
     private String userId;
-    private String transactionId;
-    private String walletId;
+    private String receiverUserId;
+    private String receiverUpiId;
     private String description;
     private BigDecimal amount;
+    private String currency;
     private String type;
-    private LocalDateTime timestamp;
     private String status;
+    private String failureReason;
+    private String requestedCategory;
+    private LocalDateTime timestamp;
 }

@@ -1,5 +1,6 @@
 package com.paytrack.auth.service;
 
+import com.paytrack.auth.AuthService;
 import com.paytrack.auth.dto.KycRequestDto;
 import com.paytrack.auth.dto.KycStatusResponse;
 import com.paytrack.auth.dto.RegisterRequest;
@@ -46,6 +47,9 @@ class AuthServiceTest {
 
     @Mock
     private JwtUtil jwtUtil;
+
+    @Mock
+    private org.springframework.amqp.rabbit.core.RabbitTemplate rabbitTemplate;
 
     @InjectMocks
     private AuthService authService;

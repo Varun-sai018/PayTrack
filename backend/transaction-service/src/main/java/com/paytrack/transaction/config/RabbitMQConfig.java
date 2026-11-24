@@ -1,6 +1,6 @@
 package com.paytrack.transaction.config;
 
-import com.paytrack.transaction.event.UserRegisteredEvent;
+import com.paytrack.transaction.event.PaymentCompletedEvent;
 import org.springframework.amqp.core.*;
 import org.springframework.amqp.support.converter.DefaultClassMapper;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
@@ -8,18 +8,38 @@ import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @Configuration
 public class RabbitMQConfig {
 
-    // Exchange for payment.completed events
     public static final String PAYMENT_EXCHANGE = "payment.exchange";
-    public static final String PAYMENT_ROUTING_KEY = "payment.completed";
+    public static final String PAYMENT_COMPLETED_ROUTING_KEY = "payment.completed";
+    public static final String EXPENSE_PAYMENT_QUEUE = "expense.payment.queue";
+    public static final String EXPENSE_PAYMENT_DLQ = "expense.payment.dlq";
 
     @Bean
     public TopicExchange paymentExchange() {
         return new TopicExchange(PAYMENT_EXCHANGE, true, false);
+    }
+
+    @Bean
+    public Queue expensePaymentQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", "");
+        args.put("x-dead-letter-routing-key", EXPENSE_PAYMENT_DLQ);
+        return new Queue(EXPENSE_PAYMENT_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public Queue expensePaymentDlq() {
+        return new Queue(EXPENSE_PAYMENT_DLQ, true);
+    }
+
+    @Bean
+    public Binding expensePaymentBinding(Queue expensePaymentQueue, TopicExchange paymentExchange) {
+        return BindingBuilder.bind(expensePaymentQueue).to(paymentExchange).with(PAYMENT_COMPLETED_ROUTING_KEY);
     }
 
     @Bean
@@ -28,8 +48,7 @@ public class RabbitMQConfig {
         DefaultClassMapper classMapper = new DefaultClassMapper();
         classMapper.setTrustedPackages("*");
         classMapper.setIdClassMapping(Map.of(
-            "com.paytrack.auth.event.UserRegisteredEvent", UserRegisteredEvent.class,
-            "com.paytrack.transaction.event.PaymentCompletedEvent", com.paytrack.transaction.event.PaymentCompletedEvent.class
+            "com.paytrack.transaction.event.PaymentCompletedEvent", PaymentCompletedEvent.class
         ));
         converter.setClassMapper(classMapper);
         return converter;

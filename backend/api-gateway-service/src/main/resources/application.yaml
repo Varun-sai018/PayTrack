@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT:8089}
 
 spring:
   application:
@@ -21,6 +21,15 @@ spring:
           uri: lb://wallet-service
           predicates:
             - Path=/api/wallets/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: wallet-service-cb
+                fallbackUri: forward:/fallback/wallet
+        - id: gateway-sandbox
+          uri: lb://wallet-service
+          predicates:
+            - Path=/api/gateway-sandbox/**
           filters:
             - name: CircuitBreaker
               args:
@@ -54,8 +63,33 @@ eureka:
       defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka/}
 
 jwt:
-  secret: a2V5LWlzLWEtc2VjcmV0LWZvci1obGQtand0LXNpZ25pbmctdHdvLWh1bmRyZWQtYml0cy1sb25nLXNlY3JldA==
+  secret: ${JWT_SECRET:a2V5LWlzLWEtc2VjcmV0LWZvci1obGQtand0LXNpZ25pbmctdHdvLWh1bmRyZWQtYml0cy1sb25nLXNlY3JldA==}
   expiration: 86400000
+
+gateway:
+  secret: ${GATEWAY_SECRET:paytrack-internal-gateway-secret-2026}
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 10s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
 
 logging:
   level:

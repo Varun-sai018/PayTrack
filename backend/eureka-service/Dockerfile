@@ -1,23 +1,11 @@
-FROM eclipse-temurin:17-jdk-alpine AS build
+FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /app
+COPY pom.xml .
+COPY src ./src
+RUN mvn clean package -DskipTests -q
 
-RUN apk add --no-cache maven
-
-COPY eureka-service/pom.xml ./eureka-service/
-COPY eureka-service/src ./eureka-service/src
-
-RUN mvn -f eureka-service/pom.xml clean package -DskipTests
-
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre
 WORKDIR /app
-
-COPY --from=build /app/eureka-service/target/eureka-service-0.0.1-SNAPSHOT.jar app.jar
-
-ENV SPRING_PROFILES_ACTIVE=docker
-
+COPY --from=build /app/target/eureka-service.jar eureka-service.jar
 EXPOSE 8761
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD ["curl", "-f", "http://localhost:8761/actuator/health"] || exit 1
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-jar", "eureka-service.jar"]

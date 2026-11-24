@@ -142,13 +142,12 @@ services:
   # ==========================================
 
   eureka-service:
+    image: paytrack-eureka:latest
     build:
-      context: .
-      dockerfile: backend/eureka-service/Dockerfile
+      context: ./backend/eureka-service
+      dockerfile: Dockerfile
     container_name: paytrack-eureka
     restart: always
-    depends_on:
-      - rabbitmq
     environment:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka/
     networks:
@@ -157,60 +156,30 @@ services:
       - "8761:8761"
 
   api-gateway-service:
+    image: paytrack-gateway:latest
     build:
-      context: .
-      dockerfile: backend/api-gateway-service/Dockerfile
+      context: ./backend/api-gateway-service
+      dockerfile: Dockerfile
     container_name: paytrack-gateway
     restart: always
     depends_on:
       - eureka-service
     environment:
       SERVER_PORT: 8089
-      SPRING_CLOUD_GATEWAY_ROUTES: |
-        routes:
-          - id: auth-service
-            uri: lb://auth-service
-            predicates:
-              - Path=/api/auth/**
-            filters:
-              - name: CircuitBreaker
-                args:
-                  name: auth-service-cb
-          - id: wallet-service
-            uri: lb://wallet-service
-            predicates:
-              - Path=/api/wallets/**
-            filters:
-              - name: CircuitBreaker
-                args:
-                  name: wallet-service-cb
-          - id: transaction-service
-            uri: lb://transaction-service
-            predicates:
-              - Path=/api/transactions/**
-            filters:
-              - name: CircuitBreaker
-                args:
-                  name: transaction-service-cb
-          - id: expense-service
-            uri: lb://expense-service
-            predicates:
-              - Path=/api/expenses/**
-            filters:
-              - name: CircuitBreaker
-                args:
-                  name: expense-service-cb
-      SPRING_CLOUD_DISCOVERY_CLIENT_REGISTERED: true
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka/
       SPRING_RABBITMQ_HOST: rabbitmq
+      GATEWAY_SECRET: paytrack-internal-gateway-secret-2026
+      JWT_SECRET: a2V5LWlzLWEtc2VjcmV0LWZvci1obGQtand0LXNpZ25pbmctdHdvLWh1bmRyZWQtYml0cy1sb25nLXNlY3JldA==
     networks:
       - paytrack-network
     ports:
       - "8089:8089"
 
   auth-service:
+    image: paytrack-auth:latest
     build:
-      context: .
-      dockerfile: backend/auth-service/Dockerfile
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
     container_name: paytrack-auth
     restart: always
     depends_on:
@@ -218,10 +187,15 @@ services:
       - mysql-auth
       - rabbitmq
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-auth:3306/paytrack_auth
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-auth:3306/paytrack_auth?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: paytrack
+      SPRING_DATASOURCE_PASSWORD: paytrack123
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_DATA_REDIS_HOST: redis
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka/
+      GATEWAY_SECRET: paytrack-internal-gateway-secret-2026
+      INTERNAL_API_KEY: paytrack-internal-api-key-2026
+      JWT_SECRET: a2V5LWlzLWEtc2VjcmV0LWZvci1obGQtand0LXNpZ25pbmctdHdvLWh1bmRyZWQtYml0cy1sb25nLXNlY3JldA==
     networks:
       - paytrack-network
     ports:
@@ -233,9 +207,10 @@ services:
       retries: 3
 
   wallet-service:
+    image: paytrack-wallet:latest
     build:
-      context: .
-      dockerfile: backend/wallet-service/Dockerfile
+      context: ./backend/wallet-service
+      dockerfile: Dockerfile
     container_name: paytrack-wallet
     restart: always
     depends_on:
@@ -243,10 +218,13 @@ services:
       - mysql-wallet
       - rabbitmq
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-wallet:3306/paytrack_wallet
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-wallet:3306/paytrack_wallet?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: paytrack
+      SPRING_DATASOURCE_PASSWORD: paytrack123
       SPRING_RABBITMQ_HOST: rabbitmq
-      SPRING_DATA_REDIS_HOST: redis
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka/
+      GATEWAY_SECRET: paytrack-internal-gateway-secret-2026
+      INTERNAL_API_KEY: paytrack-internal-api-key-2026
     networks:
       - paytrack-network
     ports:
@@ -258,9 +236,10 @@ services:
       retries: 3
 
   transaction-service:
+    image: paytrack-transaction:latest
     build:
-      context: .
-      dockerfile: backend/transaction-service/Dockerfile
+      context: ./backend/transaction-service
+      dockerfile: Dockerfile
     container_name: paytrack-transaction
     restart: always
     depends_on:
@@ -268,9 +247,13 @@ services:
       - mysql-transaction
       - rabbitmq
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-transaction:3306/paytrack_transaction
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-transaction:3306/paytrack_transaction?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: paytrack
+      SPRING_DATASOURCE_PASSWORD: paytrack123
       SPRING_RABBITMQ_HOST: rabbitmq
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka/
+      GATEWAY_SECRET: paytrack-internal-gateway-secret-2026
+      INTERNAL_API_KEY: paytrack-internal-api-key-2026
     networks:
       - paytrack-network
     ports:
@@ -282,9 +265,10 @@ services:
       retries: 3
 
   expense-service:
+    image: paytrack-expense:latest
     build:
-      context: .
-      dockerfile: backend/expense-service/Dockerfile
+      context: ./backend/expense-service
+      dockerfile: Dockerfile
     container_name: paytrack-expense
     restart: always
     depends_on:
@@ -292,9 +276,13 @@ services:
       - mysql-expense
       - rabbitmq
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-expense:3306/paytrack_expense
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-expense:3306/paytrack_expense?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: paytrack
+      SPRING_DATASOURCE_PASSWORD: paytrack123
       SPRING_RABBITMQ_HOST: rabbitmq
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka/
+      GATEWAY_SECRET: paytrack-internal-gateway-secret-2026
+      INTERNAL_API_KEY: paytrack-internal-api-key-2026
     networks:
       - paytrack-network
     ports:
@@ -304,3 +292,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  frontend:
+    image: paytrack-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: paytrack-frontend
+    restart: always
+    depends_on:
+      - api-gateway-service
+    networks:
+      - paytrack-network
+    ports:
+      - "3000:80"
+

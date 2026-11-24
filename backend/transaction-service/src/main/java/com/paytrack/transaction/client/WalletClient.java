@@ -1,34 +1,32 @@
 package com.paytrack.transaction.client;
 
 import com.paytrack.transaction.UserContextHolder;
+import com.paytrack.transaction.dto.ApiResponse;
+import com.paytrack.transaction.dto.InternalTransferRequest;
+import com.paytrack.transaction.dto.InternalTransferResponse;
 import feign.RequestInterceptor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.bind.annotation.*;
-import java.math.BigDecimal;
-import java.util.Map;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 @FeignClient(name = "wallet-service", configuration = WalletClient.Config.class)
 public interface WalletClient {
 
-    @PostMapping("/api/wallets/credit")
-    void credit(@RequestParam BigDecimal amount);
-
-    @PostMapping("/api/wallets/debit")
-    void debit(@RequestParam BigDecimal amount);
-
     @PostMapping("/internal/wallets/transfer")
-    TransferResponse internalTransfer(
-            @RequestParam String txnRef,
-            @RequestParam(required = false) String fromUserId,
-            @RequestParam(required = false) String toUserId,
-            @RequestParam BigDecimal amount,
-            @RequestParam String description
+    ApiResponse<InternalTransferResponse> internalTransfer(
+            @RequestHeader("X-Internal-Key") String internalKey,
+            @RequestBody InternalTransferRequest request
     );
 
     @Configuration
     class Config {
+
+        @Value("${internal.api.key:paytrack-internal-api-key-2026}")
+        private String internalApiKey;
 
         @Bean
         public RequestInterceptor userIdRequestInterceptor() {
@@ -37,10 +35,8 @@ public interface WalletClient {
                 if (userId != null && !userId.isEmpty()) {
                     request.header("X-User-Id", userId);
                 }
-                // Add internal key for internal endpoints
-                String internalKey = System.getProperty("INTERNAL_API_KEY");
-                if (internalKey != null && !internalKey.isEmpty()) {
-                    request.header("X-Internal-Key", internalKey);
+                if (internalApiKey != null && !internalApiKey.isEmpty()) {
+                    request.header("X-Internal-Key", internalApiKey);
                 }
             };
         }

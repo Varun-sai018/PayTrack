@@ -1,6 +1,7 @@
 package com.paytrack.expense.config;
 
 import com.paytrack.expense.filter.UserContextFilter;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -17,17 +18,20 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final UserContextFilter userContextFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .addFilterBefore(new UserContextFilter(), UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(userContextFilter, UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/expenses/**").permitAll()
                 .requestMatchers("/actuator/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                .requestMatchers("/api/expenses/**").permitAll()
                 .anyRequest().authenticated()
             )
             .cors(Customizer.withDefaults());

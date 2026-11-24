@@ -78,18 +78,24 @@ public class AuthService {
         log.info("User registered successfully: {}", savedUser.getEmail());
 
         // Publish user registered event
-        UserRegisteredEvent event = UserRegisteredEvent.fromUser(
-                savedUser.getUserId(),
-                savedUser.getEmail(),
-                savedUser.getFullName(),
-                savedUser.getRole()
-        );
-        rabbitTemplate.convertAndSend(
-                "notification.exchange",
-                "user.registered",
-                event
-        );
-        log.info("Published user.registered event for user: {}", savedUser.getEmail());
+        try {
+            if (rabbitTemplate != null) {
+                UserRegisteredEvent event = UserRegisteredEvent.fromUser(
+                        savedUser.getUserId(),
+                        savedUser.getEmail(),
+                        savedUser.getFullName(),
+                        savedUser.getRole()
+                );
+                rabbitTemplate.convertAndSend(
+                        "notification.exchange",
+                        "user.registered",
+                        event
+                );
+                log.info("Published user.registered event for user: {}", savedUser.getEmail());
+            }
+        } catch (Exception e) {
+            log.warn("Could not publish user.registered event to RabbitMQ: {}", e.getMessage());
+        }
 
         return convertToDto(savedUser);
     }
@@ -207,8 +213,11 @@ public class AuthService {
         String maskedName = maskName(user.getFullName());
 
         return UserLookupResponse.builder()
+                .userId(user.getUserId())
                 .maskedName(maskedName)
                 .upiId(user.getUpiId())
+                .accountStatus(user.getAccountStatus() != null ? user.getAccountStatus().name() : null)
+                .kycStatus(user.getKycStatus() != null ? user.getKycStatus().name() : null)
                 .build();
     }
 

@@ -54,9 +54,12 @@ public class SecurityConfig {
         return config.getAuthenticationManager();
     }
 
+    @org.springframework.beans.factory.annotation.Value("${internal.api.key:paytrack-internal-api-key-2026}")
+    private String internalApiKey;
+
     @Bean
     public UserContextFilter userContextFilter() {
-        return new UserContextFilter();
+        return new UserContextFilter(internalApiKey);
     }
 
     @Bean
@@ -66,7 +69,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .addFilterBefore(userContextFilter(), UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/auth/**", "/internal/**").permitAll()
                 .requestMatchers("/actuator/**", "/swagger-ui.html", "/v3/api-docs", "/swagger-ui/**").permitAll()
                 .anyRequest().authenticated())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()));

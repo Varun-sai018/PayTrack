@@ -6,6 +6,7 @@ import com.paytrack.gateway.dto.ErrorResponseDto;
 import com.paytrack.gateway.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -31,6 +32,9 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     private final AuthorizationConfig authorizationConfig;
     private final ObjectMapper objectMapper;
 
+    @Value("${gateway.secret:paytrack-internal-gateway-secret-2026}")
+    private String gatewaySecret = "paytrack-internal-gateway-secret-2026";
+
     private static final List<String> PUBLIC_APIS = List.of(
             "/api/auth/login",
             "/api/auth/register",
@@ -41,7 +45,8 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             "/api/auth/resend-otp",
             "/swagger-ui",
             "/v3/api-docs",
-            "/fallback"
+            "/fallback",
+            "/actuator"
     );
 
     @Override
@@ -72,14 +77,19 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         String email = jwtUtil.retrieveEmailFromToken(token);
         String userId = jwtUtil.retrieveUserIdFromToken(token);
         List<String> roles = jwtUtil.retrieveRolesFromToken(token);
+        String kycStatus = jwtUtil.retrieveKycStatusFromToken(token);
 
-        log.info("Authenticated User: {} (id={})", email, userId);
+        log.info("Authenticated User: {} (id={}, kyc={})", email, userId, kycStatus);
         log.info("Roles: {}", roles);
 
         String route = determineRoute(path);
         String routeKey = method.toUpperCase() + ":" + route;
 
         List<String> allowedRoles = authorizationConfig.routeRoles().get(routeKey);
+        if (allowedRoles == null) {
+            allowedRoles = authorizationConfig.routeRoles().get(route);
+        }
+
         if (allowedRoles != null && !allowedRoles.isEmpty()) {
             boolean authorized = roles.stream().anyMatch(allowedRoles::contains);
             if (!authorized) {
@@ -88,10 +98,13 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         }
 
         ServerWebExchange mutatedExchange = exchange.mutate()
-                .request(r -> r
-                        .header("X-User-Id", userId != null ? userId : "")
-                        .header("X-User-Email", email != null ? email : "")
-                        .header("X-User-Roles", String.join(",", roles)))
+                .request(r -> r.headers(h -> {
+                    h.set("X-User-Id", userId != null ? userId : "");
+                    h.set("X-User-Email", email != null ? email : "");
+                    h.set("X-User-Roles", String.join(",", roles));
+                    h.set("X-Kyc-Status", kycStatus != null ? kycStatus : "");
+                    h.set("X-Gateway-Secret", gatewaySecret);
+                }))
                 .build();
 
         return chain.filter(mutatedExchange);
@@ -102,6 +115,8 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     }
 
     private String determineRoute(String path) {
+        if (path.startsWith("/api/auth/admin")) return "/api/auth/admin";
+        if (path.startsWith("/api/transactions/admin")) return "/api/transactions/admin";
         if (path.startsWith("/api/wallets")) return "/api/wallets";
         if (path.startsWith("/api/transactions")) return "/api/transactions";
         if (path.startsWith("/api/expenses")) return "/api/expenses";

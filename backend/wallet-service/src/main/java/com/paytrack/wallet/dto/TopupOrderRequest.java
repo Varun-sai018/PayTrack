@@ -1,0 +1,20 @@
+package com.paytrack.wallet.dto;
+
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class TopupOrderRequest {
+    @NotNull(message = "Amount is required")
+    @DecimalMin(value = "1.00", message = "Amount must be at least 1.00")
+    private BigDecimal amount;
+}

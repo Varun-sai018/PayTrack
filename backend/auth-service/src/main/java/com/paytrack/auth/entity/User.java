@@ -43,10 +43,12 @@ public class User {
     @Column(nullable = true, unique = true)
     private String upiId;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private KycStatus kycStatus = KycStatus.NOT_SUBMITTED;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private AccountStatus accountStatus = AccountStatus.ACTIVE;
@@ -57,16 +59,21 @@ public class User {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
+    @Builder.Default
     @Column(nullable = false)
-    private boolean active;
+    private boolean active = true;
 
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
-        if (!active) {
-            active = true;
+        if (kycStatus == null) {
+            kycStatus = KycStatus.NOT_SUBMITTED;
         }
+        if (accountStatus == null) {
+            accountStatus = AccountStatus.ACTIVE;
+        }
+        active = true;
     }
 
     @PreUpdate

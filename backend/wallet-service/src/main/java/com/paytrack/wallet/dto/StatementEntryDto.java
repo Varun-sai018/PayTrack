@@ -1,4 +1,4 @@
-package com.paytrack.expense.dto;
+package com.paytrack.wallet.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -12,12 +12,12 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class WalletDto {
-
-    private Long id;
-    private String userId;
-    private BigDecimal balance;
-    private String currency;
+public class StatementEntryDto {
+    private String id;
+    private String txnRef;
+    private String entryType;
+    private BigDecimal amount;
+    private BigDecimal balanceAfter;
+    private String description;
     private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
 }

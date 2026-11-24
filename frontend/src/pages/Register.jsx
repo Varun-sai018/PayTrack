@@ -11,6 +11,7 @@ function Register() {
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
+    phone: '',
     password: '',
     confirmPassword: '',
   })
@@ -24,6 +25,11 @@ function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+
+    if (!/^[6-9]\d{9}$/.test(formData.phone)) {
+      setError('Please enter a valid 10-digit Indian mobile number (starts with 6-9)')
+      return
+    }
 
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match')
@@ -40,6 +46,7 @@ function Register() {
     const result = await register({
       fullName: formData.fullName,
       email: formData.email,
+      phone: formData.phone,
       password: formData.password,
     })
 
@@ -80,6 +87,18 @@ function Register() {
             placeholder="you@example.com"
             required
             autoComplete="email"
+          />
+
+          <Input
+            label="Mobile Number"
+            name="phone"
+            type="tel"
+            value={formData.phone}
+            onChange={handleChange}
+            placeholder="9876543210"
+            required
+            autoComplete="tel"
+            hint="10-digit number used for UPI ID (e.g. 9876543210@paytrack)"
           />
 
           <Input

@@ -21,6 +21,10 @@ public class ExpenseDto {
     private String category;
     private String description;
     private BigDecimal amount;
+    private String currency;
     private String status;
+    private String source;
+    private String categorySource;
+    private String txnRef;
     private LocalDateTime timestamp;
 }

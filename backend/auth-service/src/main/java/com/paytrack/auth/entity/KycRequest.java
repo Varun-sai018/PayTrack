@@ -31,6 +31,7 @@ public class KycRequest {
     @Column(name = "doc_last4", nullable = false, length = 4)
     private String docLast4;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private KycRequestStatus status = KycRequestStatus.PENDING;

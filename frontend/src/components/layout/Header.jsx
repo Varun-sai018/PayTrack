@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { walletApi, formatINR } from '../../services/api'
 import Button from '../ui/Button'
 import Badge from '../ui/Badge'
 
@@ -17,6 +18,15 @@ function Header() {
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [balance, setBalance] = useState(null)
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      walletApi.getMyWallet()
+        .then((res) => setBalance(res.data.data?.balance))
+        .catch(() => {})
+    }
+  }, [isAuthenticated, location.pathname])
 
   const handleLogout = () => {
     logout()
@@ -67,10 +77,15 @@ function Header() {
         {/* Right Side Actions */}
         <div className="flex items-center gap-3">
           {/* Wallet Balance Preview */}
-          <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-[var(--color-bg-elevated)] rounded-[var(--radius-md)] border border-[var(--color-border)]">
-            <span className="text-xs text-[var(--color-text-muted)]">Balance</span>
-            <span className="font-mono font-medium text-[var(--color-accent)]">$0.00</span>
-          </div>
+          <Link
+            to="/wallet"
+            className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-[var(--color-bg-elevated)] rounded-[var(--radius-md)] border border-[var(--color-border)] hover:border-[var(--color-accent)] transition-colors"
+          >
+            <span className="text-xs text-[var(--color-text-muted)]">Wallet</span>
+            <span className="font-mono font-medium text-[var(--color-accent)]">
+              {balance !== null && balance !== undefined ? formatINR(balance) : '₹--'}
+            </span>
+          </Link>
 
           {/* User Menu */}
           <div className="relative">

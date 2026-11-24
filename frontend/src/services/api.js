@@ -135,7 +135,7 @@ export const authApi = {
 export const walletApi = {
   getMyWallet: () => api.get('/wallets/me'),
   getStatement: (page, size, type, from, to) => api.get('/wallets/me/statement', { params: { page, size, type, from, to } }),
-  topupOrder: (amount) => api.post('/wallets/topup/orders', null, { params: { amount } }),
+  topupOrder: (amount) => api.post('/wallets/topup/orders', { amount }),
   topupVerify: (data) => api.post('/wallets/topup/verify', data),
   sandboxPay: (data) => api.post('/gateway-sandbox/pay', data),
 };
