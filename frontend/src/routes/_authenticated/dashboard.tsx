@@ -5,6 +5,7 @@ import { ArrowLeftRight, ArrowUpRight, Plus, Receipt, Smartphone } from "lucide-
 
 import { EmptyState, ExpenseRow, SpendingBar, TxnRow, categoryTone, spendingByCategory } from "@/components/activity";
 import { BalanceAction, BalanceCard } from "@/components/balance-card";
+import { KycBanner, KycDialog } from "@/components/kyc-section";
 import { RechargeDialog, TopupDialog, TransferDialog } from "@/components/money-dialogs";
 import { PageHeader, PageSkeleton } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ function Dashboard() {
   const { data: txns } = useSuspenseQuery(transactionsQuery(5));
   const { data: expenses } = useSuspenseQuery(expensesQuery);
   const [dialog, setDialog] = useState<"topup" | "transfer" | "recharge" | null>(null);
+  const [kycDialogOpen, setKycDialogOpen] = useState(false);
   const close = (open: boolean) => !open && setDialog(null);
 
   const month = useMemo(() => {
@@ -66,6 +68,11 @@ function Dashboard() {
       <PageHeader
         eyebrow={greeting()}
         title={firstName}
+      />
+
+      <KycBanner
+        kycStatus={profile?.kyc_status}
+        onOpenDialog={() => setKycDialogOpen(true)}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.35fr_1fr]">
@@ -160,6 +167,7 @@ function Dashboard() {
       <TopupDialog open={dialog === "topup"} onOpenChange={close} />
       <TransferDialog open={dialog === "transfer"} onOpenChange={close} />
       <RechargeDialog open={dialog === "recharge"} onOpenChange={close} />
+      <KycDialog open={kycDialogOpen} onOpenChange={setKycDialogOpen} profile={profile ?? null} />
     </div>
   );
 }

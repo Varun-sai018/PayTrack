@@ -5,6 +5,7 @@ import { Check, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Field, FormMessage, NativeSelect } from "@/components/field";
+import { KycSection } from "@/components/kyc-section";
 import { PageHeader, PageSkeleton } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -105,6 +106,12 @@ function SettingsPage() {
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="kyc" className="flex items-center gap-1.5">
+            KYC Verification
+            {profile?.kyc_status !== "APPROVED" && (
+              <span className="h-2 w-2 rounded-full bg-warning" />
+            )}
+          </TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
         </TabsList>
@@ -149,6 +156,10 @@ function SettingsPage() {
                 </div>
               </div>
             </form>
+          </TabsContent>
+
+          <TabsContent value="kyc" className="m-0 p-6 sm:p-8">
+            <KycSection profile={profile} />
           </TabsContent>
 
           <TabsContent value="security" className="m-0 space-y-8 p-6 sm:p-8">

@@ -239,6 +239,16 @@ public class AuthService {
         return convertToDto(user);
     }
 
+    public UserDto updateUserKycStatus(String userId, String kycStatus) {
+        User user = userRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        user.setKycStatus(User.KycStatus.valueOf(kycStatus));
+        userRepository.save(user);
+
+        return convertToDto(user);
+    }
+
     public List<KycRequest> getKycRequests(String status) {
         if (status != null && !status.isEmpty()) {
             return kycRequestRepository.findByStatus(KycRequest.KycRequestStatus.valueOf(status));

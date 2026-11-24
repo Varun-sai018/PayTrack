@@ -21,6 +21,17 @@ export const profileQuery = queryOptions({
   },
 });
 
+export const kycStatusQuery = queryOptions({
+  queryKey: ["kyc-status"],
+  queryFn: async (): Promise<{ kycStatus: string; remarks?: string } | null> => {
+    try {
+      return await api.getKycStatus();
+    } catch {
+      return null;
+    }
+  },
+});
+
 export const walletQuery = queryOptions({
   queryKey: ["wallet"],
   queryFn: async (): Promise<Wallet | null> => {

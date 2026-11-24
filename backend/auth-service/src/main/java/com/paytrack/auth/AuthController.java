@@ -98,6 +98,14 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(user, "User status updated"));
     }
 
+    @PutMapping("/admin/users/{id}/kyc")
+    public ResponseEntity<ApiResponse<UserDto>> updateUserKyc(
+            @PathVariable String id,
+            @RequestParam String status) {
+        UserDto user = authService.updateUserKycStatus(id, status);
+        return ResponseEntity.ok(ApiResponse.success(user, "User KYC status updated"));
+    }
+
     @GetMapping("/admin/kyc")
     public ResponseEntity<ApiResponse<List<KycRequest>>> getAdminKyc(
             @RequestParam(defaultValue = "0") int page,

@@ -152,6 +152,21 @@ function AdminPage() {
     },
   });
 
+  const updateUserKycMutation = useMutation({
+    mutationFn: async ({ userId, status }: { userId: string; status: string }) => {
+      return api.updateUserKyc(userId, status);
+    },
+    onSuccess: () => {
+      toast.success("User KYC status updated to APPROVED");
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-kyc"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-summary"] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Failed to update user KYC status");
+    },
+  });
+
   const refreshAll = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["admin-summary"] }),
@@ -183,6 +198,13 @@ function AdminPage() {
     () => kycRequests.filter((k) => k.status === "REJECTED").length,
     [kycRequests],
   );
+
+  const unsubmittedUsers = useMemo(
+    () => users.filter((u) => u.kycStatus === "NOT_SUBMITTED"),
+    [users],
+  );
+
+  const notSubmittedCount = unsubmittedUsers.length;
 
   const activeUsersCount = useMemo(
     () => users.filter((u) => u.active).length,
@@ -380,6 +402,13 @@ function AdminPage() {
                     </div>
                     <Badge variant="destructive">{rejectedKycCount}</Badge>
                   </div>
+                  <div className="flex items-center justify-between rounded-lg bg-surface/70 p-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+                      <span className="text-sm font-medium">Not Yet Submitted</span>
+                    </div>
+                    <Badge variant="secondary">{notSubmittedCount}</Badge>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -524,7 +553,7 @@ function AdminPage() {
                 </CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
-                {(["ALL", "PENDING", "APPROVED", "REJECTED"] as const).map((status) => (
+                {(["ALL", "PENDING", "APPROVED", "REJECTED", "NOT_SUBMITTED"] as const).map((status) => (
                   <Button
                     key={status}
                     variant={kycFilter === status ? "default" : "outline"}
@@ -532,13 +561,77 @@ function AdminPage() {
                     onClick={() => setKycFilter(status)}
                     className="text-xs"
                   >
-                    {status}
+                    {status === "NOT_SUBMITTED" ? "NOT SUBMITTED" : status}
+                    {status === "NOT_SUBMITTED" && notSubmittedCount > 0 && (
+                      <span className="ml-1.5 rounded-full bg-surface px-1.5 py-0.2 text-[10px] font-semibold text-muted-foreground">
+                        {notSubmittedCount}
+                      </span>
+                    )}
                   </Button>
                 ))}
               </div>
             </CardHeader>
             <CardContent>
-              {filteredKyc.length === 0 ? (
+              {kycFilter === "NOT_SUBMITTED" ? (
+                unsubmittedUsers.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <CheckCircle2 className="h-10 w-10 text-muted-foreground/60" />
+                    <p className="mt-2 text-sm font-medium">All users have submitted KYC documents</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>User</TableHead>
+                          <TableHead>Contact / UPI</TableHead>
+                          <TableHead>KYC Status</TableHead>
+                          <TableHead>Registered At</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {unsubmittedUsers.map((u) => (
+                          <TableRow key={u.userId}>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium text-foreground">{u.fullName}</p>
+                                <p className="text-xs text-muted-foreground">{u.email}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <p className="text-foreground">{u.phone || "—"}</p>
+                              <p className="font-mono text-muted-foreground">{u.upiId || "—"}</p>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">NOT SUBMITTED</Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 gap-1 text-success hover:bg-success/10 border-success/30 text-xs"
+                                disabled={updateUserKycMutation.isPending}
+                                onClick={() =>
+                                  updateUserKycMutation.mutate({
+                                    userId: u.userId,
+                                    status: "APPROVED",
+                                  })
+                                }
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Approve KYC
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )
+              ) : filteredKyc.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <CheckCircle2 className="h-10 w-10 text-muted-foreground/60" />
                   <p className="mt-2 text-sm font-medium">No KYC requests in this state</p>
@@ -723,36 +816,57 @@ function AdminPage() {
                           <TableCell className="text-right">
                             {u.role.includes("ADMIN") ? (
                               <span className="text-xs text-muted-foreground">Admin Protected</span>
-                            ) : u.active ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 gap-1 text-destructive hover:bg-destructive/10"
-                                disabled={updateUserStatusMutation.isPending}
-                                onClick={() =>
-                                  updateUserStatusMutation.mutate({
-                                    userId: u.userId,
-                                    status: "SUSPENDED",
-                                  })
-                                }
-                              >
-                                <UserX className="h-3.5 w-3.5" /> Suspend
-                              </Button>
                             ) : (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 gap-1 text-success hover:bg-success/10"
-                                disabled={updateUserStatusMutation.isPending}
-                                onClick={() =>
-                                  updateUserStatusMutation.mutate({
-                                    userId: u.userId,
-                                    status: "ACTIVE",
-                                  })
-                                }
-                              >
-                                <UserCheck className="h-3.5 w-3.5" /> Activate
-                              </Button>
+                              <div className="flex items-center justify-end gap-2">
+                                {u.kycStatus !== "APPROVED" && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 gap-1 text-success hover:bg-success/10 border-success/30 text-xs"
+                                    disabled={updateUserKycMutation.isPending}
+                                    onClick={() =>
+                                      updateUserKycMutation.mutate({
+                                        userId: u.userId,
+                                        status: "APPROVED",
+                                      })
+                                    }
+                                    title="Instantly approve KYC for this user"
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" /> Approve KYC
+                                  </Button>
+                                )}
+                                {u.active ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 gap-1 text-destructive hover:bg-destructive/10 text-xs"
+                                    disabled={updateUserStatusMutation.isPending}
+                                    onClick={() =>
+                                      updateUserStatusMutation.mutate({
+                                        userId: u.userId,
+                                        status: "SUSPENDED",
+                                      })
+                                    }
+                                  >
+                                    <UserX className="h-3.5 w-3.5" /> Suspend
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 gap-1 text-success hover:bg-success/10 text-xs"
+                                    disabled={updateUserStatusMutation.isPending}
+                                    onClick={() =>
+                                      updateUserStatusMutation.mutate({
+                                        userId: u.userId,
+                                        status: "ACTIVE",
+                                      })
+                                    }
+                                  >
+                                    <UserCheck className="h-3.5 w-3.5" /> Activate
+                                  </Button>
+                                )}
+                              </div>
                             )}
                           </TableCell>
                         </TableRow>

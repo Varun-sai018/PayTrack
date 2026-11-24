@@ -5,6 +5,7 @@ import { ArrowDownLeft, ArrowUpRight, Plus, RefreshCw } from "lucide-react";
 
 import { Amount, EmptyState } from "@/components/activity";
 import { BalanceCard } from "@/components/balance-card";
+import { KycBanner, KycDialog } from "@/components/kyc-section";
 import { TopupDialog, TransferDialog } from "@/components/money-dialogs";
 import { PageHeader, PageSkeleton, SectionLabel } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,7 @@ function WalletPage() {
   const { data: statement } = useSuspenseQuery(ledgerQuery);
   const { data: profile } = useQuery(profileQuery);
   const [dialog, setDialog] = useState<"topup" | "transfer" | null>(null);
+  const [kycDialogOpen, setKycDialogOpen] = useState(false);
   const close = (open: boolean) => !open && setDialog(null);
   const refresh = () =>
     Promise.all([queryClient.invalidateQueries({ queryKey: ["wallet"] }), queryClient.invalidateQueries({ queryKey: ["ledger"] })]);
@@ -47,6 +49,11 @@ function WalletPage() {
   return (
     <div className="animate-fade-in space-y-8">
       <PageHeader title="Wallet" description="Add money, send it on, and see every rupee that moved." />
+
+      <KycBanner
+        kycStatus={profile?.kyc_status}
+        onOpenDialog={() => setKycDialogOpen(true)}
+      />
 
       {wallet ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.35fr_1fr]">
@@ -155,6 +162,7 @@ function WalletPage() {
 
       <TopupDialog open={dialog === "topup"} onOpenChange={close} />
       <TransferDialog open={dialog === "transfer"} onOpenChange={close} />
+      <KycDialog open={kycDialogOpen} onOpenChange={setKycDialogOpen} profile={profile ?? null} />
     </div>
   );
 }

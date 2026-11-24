@@ -437,6 +437,10 @@ export const api = {
     });
   },
 
+  async getKycStatus(): Promise<{ kycStatus: string; remarks?: string }> {
+    return apiFetch<any>("/api/auth/kyc/status");
+  },
+
   // Admin APIs
   async getAdminUsers(params?: { page?: number; size?: number; status?: string }): Promise<AdminUser[]> {
     const page = params?.page ?? 0;
@@ -464,6 +468,12 @@ export const api = {
 
   async updateUserStatus(userId: string, status: "ACTIVE" | "SUSPENDED" | "LOCKED" | string) {
     return apiFetch<any>(`/api/auth/admin/users/${userId}/status?status=${encodeURIComponent(status)}`, {
+      method: "PUT",
+    });
+  },
+
+  async updateUserKyc(userId: string, status: "APPROVED" | "REJECTED" | "PENDING" | string) {
+    return apiFetch<any>(`/api/auth/admin/users/${userId}/kyc?status=${encodeURIComponent(status)}`, {
       method: "PUT",
     });
   },
