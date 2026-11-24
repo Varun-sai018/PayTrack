@@ -1,0 +1,6 @@
+node_modules
+.output
+.wrangler
+.git
+.env*.local
+npm-debug.log*
