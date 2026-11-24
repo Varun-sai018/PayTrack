@@ -1,18 +1,18 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
 import { AppShell } from "@/components/app-shell";
-import { supabase } from "@/integrations/supabase/client";
+import { getToken, getUser } from "@/lib/api";
 
 // Sessions live in the browser, so protected pages render client-side only.
-// Data access is enforced separately by database row-level security.
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async ({ location }) => {
-    const { data } = await supabase.auth.getSession();
-    if (!data.session) {
+    const token = getToken();
+    const user = getUser();
+    if (!token || !user) {
       throw redirect({ to: "/login", search: { redirect: location.href } });
     }
-    return { userId: data.session.user.id };
+    return { userId: user.userId };
   },
   pendingComponent: FullPageLoader,
   component: AuthenticatedLayout,

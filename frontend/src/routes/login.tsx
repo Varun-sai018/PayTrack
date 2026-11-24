@@ -4,7 +4,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AuthShell } from "@/components/auth-shell";
 import { Field, FormMessage } from "@/components/field";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { api, isAuthenticated } from "@/lib/api";
+import { friendlyError } from "@/lib/paytrack";
 
 type LoginSearch = { redirect?: string; registered?: boolean };
 
@@ -45,27 +46,23 @@ function Login() {
   const target = redirect ?? "/dashboard";
 
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
-      if (data.session) void navigate({ to: target, replace: true });
-    });
+    if (isAuthenticated()) {
+      void navigate({ to: target, replace: true });
+    }
   }, [navigate, target]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (signInError) {
-      const msg = signInError.message.toLowerCase();
-      setError(
-        msg.includes("confirm")
-          ? "Please confirm your email first — check your inbox for the link."
-          : "Login failed. Please check your credentials.",
-      );
-      return;
+    try {
+      await api.login({ email: email.trim(), password });
+      setLoading(false);
+      await navigate({ to: target, replace: true });
+    } catch (err: any) {
+      setLoading(false);
+      setError(friendlyError(err, "Login failed. Please check your credentials."));
     }
-    await navigate({ to: target, replace: true });
   };
 
   return (
@@ -84,7 +81,7 @@ function Login() {
       <form onSubmit={handleSubmit} className="space-y-5" noValidate>
         {registered && (
           <FormMessage tone="success">
-            Account created! Check your email to confirm it, then sign in.
+            Account created! Please sign in.
           </FormMessage>
         )}
         <Field
@@ -107,22 +104,11 @@ function Login() {
             required
             autoComplete="current-password"
           />
-          <div className="mt-2 text-right">
-            <Link to="/forgot-password" className="text-xs font-medium text-muted-foreground hover:text-foreground">
-              Forgot password?
-            </Link>
-          </div>
         </div>
         {error && <FormMessage tone="error">{error}</FormMessage>}
         <Button type="submit" size="lg" className="w-full" loading={loading}>
           Sign in
         </Button>
-        <p className="text-center text-xs text-subtle-foreground">
-          Had a PayTrack account before the upgrade?{" "}
-          <Link to="/forgot-password" className="font-medium text-foreground underline decoration-border-strong underline-offset-4">
-            Verify your email and set a new password
-          </Link>
-        </p>
       </form>
     </AuthShell>
   );

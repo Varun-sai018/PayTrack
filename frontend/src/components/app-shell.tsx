@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import { formatINR } from "@/lib/paytrack";
 import { profileQuery, walletQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -31,7 +31,7 @@ function useSignOut() {
   return async () => {
     await queryClient.cancelQueries();
     queryClient.clear();
-    await supabase.auth.signOut();
+    await api.logout();
     await navigate({ to: "/login", replace: true });
   };
 }

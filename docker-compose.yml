@@ -302,6 +302,8 @@ services:
     restart: always
     depends_on:
       - api-gateway-service
+    environment:
+      VITE_API_GATEWAY_URL: http://api-gateway-service:8089
     networks:
       - paytrack-network
     ports:

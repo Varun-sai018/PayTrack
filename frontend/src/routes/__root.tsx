@@ -12,7 +12,6 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { supabase } from "@/integrations/supabase/client";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -129,15 +128,14 @@ function RootComponent() {
   const router = useRouter();
 
   useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "paytrack_token" && !e.newValue) {
         queryClient.clear();
         void router.invalidate();
-      } else if (event === "SIGNED_IN" || event === "USER_UPDATED") {
-        void router.invalidate();
       }
-    });
-    return () => data.subscription.unsubscribe();
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
   }, [queryClient, router]);
 
   return (

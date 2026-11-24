@@ -4,7 +4,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AuthShell } from "@/components/auth-shell";
 import { Field, FormMessage } from "@/components/field";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/forgot-password")({
   head: () => ({
@@ -34,15 +33,11 @@ function ForgotPassword() {
       return;
     }
     setLoading(true);
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    setLoading(false);
-    if (resetError) {
-      setError(resetError.message || "Couldn't send the email. Please try again.");
-      return;
-    }
-    setSent(true);
+    // In demo mode, show instant confirmation
+    setTimeout(() => {
+      setLoading(false);
+      setSent(true);
+    }, 500);
   };
 
   return (

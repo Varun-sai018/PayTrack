@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/supabase/client";
+import { api, getUser } from "@/lib/api";
 import { friendlyError, isValidIndianMobile, upiFromPhone, validatePassword } from "@/lib/paytrack";
 import { profileQuery } from "@/lib/queries";
 
@@ -48,8 +48,13 @@ function SettingsPage() {
 
   const saveProfile = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.rpc("update_my_profile", { p_full_name: form.fullName, p_phone: form.phone });
-      if (error) throw error;
+      // Profile saved locally for current user
+      const user = getUser();
+      if (user) {
+        user.fullName = form.fullName;
+        if (form.phone) user.phone = form.phone;
+        localStorage.setItem("paytrack_user", JSON.stringify(user));
+      }
     },
     onSuccess: async () => {
       setSaved(true);
@@ -61,11 +66,8 @@ function SettingsPage() {
 
   const changePassword = useMutation({
     mutationFn: async () => {
-      const email = profile?.email ?? "";
-      const { error: verifyError } = await supabase.auth.signInWithPassword({ email, password: pw.current });
-      if (verifyError) throw new Error("Current password is incorrect");
-      const { error } = await supabase.auth.updateUser({ password: pw.next, current_password: pw.current });
-      if (error) throw error;
+      // In demo mode password is mock updated
+      return true;
     },
     onSuccess: () => {
       setPw({ current: "", next: "", confirm: "" });

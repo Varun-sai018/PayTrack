@@ -4,8 +4,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AuthShell } from "@/components/auth-shell";
 import { Field, FormMessage } from "@/components/field";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
-import { isValidIndianMobile, validatePassword } from "@/lib/paytrack";
+import { api } from "@/lib/api";
+import { friendlyError, isValidIndianMobile, validatePassword } from "@/lib/paytrack";
 
 export const Route = createFileRoute("/register")({
   head: () => ({
@@ -54,32 +54,19 @@ function Register() {
     }
 
     setLoading(true);
-    const { data: available, error: phoneError } = await supabase.rpc("phone_available", {
-      p_phone: form.phone,
-    });
-    if (phoneError || available === false) {
+    try {
+      await api.register({
+        fullName: form.fullName.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        password: form.password,
+      });
       setLoading(false);
-      setError(phoneError ? "Registration failed. Please try again." : "This mobile number is already registered");
-      return;
-    }
-
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email: form.email.trim(),
-      password: form.password,
-      options: {
-        emailRedirectTo: window.location.origin,
-        data: { full_name: form.fullName.trim(), phone: form.phone },
-      },
-    });
-    setLoading(false);
-    if (signUpError) {
-      setError(signUpError.message || "Registration failed. Please try again.");
-      return;
-    }
-    if (data.session) {
+      // Immediately navigate to dashboard
       await navigate({ to: "/dashboard", replace: true });
-    } else {
-      await navigate({ to: "/login", search: { registered: true } });
+    } catch (err: any) {
+      setLoading(false);
+      setError(friendlyError(err, "Registration failed. Please check your details."));
     }
   };
 

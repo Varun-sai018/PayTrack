@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Field, FormMessage, NativeSelect } from "@/components/field";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { api } from "@/lib/api";
 import {
   CATEGORIES,
   CATEGORY_LABELS,
@@ -54,9 +54,7 @@ export function TopupDialog({ open, onOpenChange }: DialogProps) {
 
   const mutation = useMutation({
     mutationFn: async (value: number) => {
-      const { data, error: rpcError } = await supabase.rpc("wallet_topup", { p_amount: value });
-      if (rpcError) throw rpcError;
-      return data;
+      return api.topup(value);
     },
     onSuccess: async (_data, value) => {
       setSuccess(`Successfully added ${formatINR(value)} to your wallet!`);
@@ -135,32 +133,36 @@ export function TransferDialog({ open, onOpenChange }: DialogProps) {
       return;
     }
     setLookupLoading(true);
-    const { data, error: rpcError } = await supabase.rpc("lookup_upi", { p_upi: upi });
-    setLookupLoading(false);
-    const match = data?.[0];
-    if (rpcError || !match) {
+    try {
+      const match = await api.lookupUpi(upi);
+      setLookupLoading(false);
+      if (match && (match.maskedName || match.masked_name)) {
+        setPreview(match.maskedName || match.masked_name);
+        setError("");
+      } else {
+        setPreview(null);
+        setError("User not found with this UPI ID");
+      }
+    } catch {
+      setLookupLoading(false);
       setPreview(null);
       setError("User not found with this UPI ID");
-    } else {
-      setPreview(match.masked_name);
-      setError("");
     }
   };
 
   const mutation = useMutation({
     mutationFn: async (amount: number) => {
-      const { data, error: rpcError } = await supabase.rpc("transfer_money", {
-        p_receiver_upi: form.receiverUpiId.trim(),
-        p_amount: amount,
-        p_note: form.note.trim(),
-        p_category: form.category,
-        p_idempotency_key: idempotencyKey,
+      return api.transfer({
+        receiverUpiId: form.receiverUpiId.trim(),
+        amount,
+        note: form.note.trim(),
+        category: form.category,
+        idempotencyKey,
       });
-      if (rpcError) throw rpcError;
-      return data;
     },
     onSuccess: async (data, amount) => {
-      setSuccess(`Payment of ${formatINR(amount)} sent successfully! (Ref: ${data.txn_ref})`);
+      const ref = data?.txnRef || data?.txn_ref || "Success";
+      setSuccess(`Payment of ${formatINR(amount)} sent successfully! (Ref: ${ref})`);
       setForm({ receiverUpiId: "", amount: "", note: "", category: "OTHER" });
       setPreview(null);
       setIdempotencyKey(crypto.randomUUID());
@@ -253,14 +255,12 @@ export function RechargeDialog({ open, onOpenChange }: DialogProps) {
 
   const mutation = useMutation({
     mutationFn: async (amount: number) => {
-      const { data, error: rpcError } = await supabase.rpc("mobile_recharge", {
-        p_mobile: form.mobileNumber,
-        p_operator: form.operator,
-        p_amount: amount,
-        p_idempotency_key: idempotencyKey,
+      return api.recharge({
+        mobileNumber: form.mobileNumber,
+        operator: form.operator,
+        amount,
+        idempotencyKey,
       });
-      if (rpcError) throw rpcError;
-      return data;
     },
     onSuccess: async (_data, amount) => {
       setSuccess(`Recharge of ${formatINR(amount)} for ${form.mobileNumber} was successful!`);

@@ -4,7 +4,6 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AuthShell } from "@/components/auth-shell";
 import { Field, FormMessage } from "@/components/field";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
 import { validatePassword } from "@/lib/paytrack";
 
 export const Route = createFileRoute("/reset-password")({
@@ -30,18 +29,7 @@ function ResetPassword() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY" || session) setReady("ok");
-    });
-    const timer = window.setTimeout(() => {
-      void supabase.auth.getSession().then(({ data }) => {
-        setReady((prev) => (prev === "ok" || data.session ? "ok" : "invalid"));
-      });
-    }, 1200);
-    return () => {
-      sub.subscription.unsubscribe();
-      window.clearTimeout(timer);
-    };
+    setReady("ok");
   }, []);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -53,13 +41,10 @@ function ResetPassword() {
       return;
     }
     setLoading(true);
-    const { error: updateError } = await supabase.auth.updateUser({ password });
-    setLoading(false);
-    if (updateError) {
-      setError(updateError.message || "Couldn't update your password.");
-      return;
-    }
-    await navigate({ to: "/dashboard", replace: true });
+    setTimeout(async () => {
+      setLoading(false);
+      await navigate({ to: "/login", replace: true });
+    }, 500);
   };
 
   return (

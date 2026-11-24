@@ -7,6 +7,7 @@
 // the build fails. Never add compression (compressPublicAssets, vite-plugin-compression):
 // hosting already compresses at the edge.
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
+import http from "node:http";
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
@@ -20,8 +21,10 @@ export default defineConfig({
       host: "0.0.0.0",
       proxy: {
         "/api": {
-          target: process.env.VITE_API_GATEWAY_URL || "http://api-gateway-service:8089",
+          target: process.env.VITE_API_GATEWAY_URL || "http://localhost:8089",
           changeOrigin: true,
+          secure: false,
+          agent: new http.Agent({ keepAlive: true }),
         },
       },
     },
