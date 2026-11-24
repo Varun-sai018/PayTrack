@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftRight, ChevronsUpDown, Home, LogOut, PieChart, Settings, Wallet } from "lucide-react";
+import { ArrowLeftRight, ChevronsUpDown, Home, LogOut, PieChart, Settings, ShieldCheck, Wallet } from "lucide-react";
 
 import { BrandLogo } from "@/components/brand-logo";
 import {
@@ -68,6 +68,13 @@ function UserMenu({ trigger, align = "end" }: { trigger: ReactNode; align?: "sta
           <p className="truncate text-xs text-muted-foreground">{profile?.email}</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {profile?.role?.includes("ADMIN") && (
+          <DropdownMenuItem asChild>
+            <Link to="/admin" className="cursor-pointer font-medium text-highlight-foreground">
+              <ShieldCheck className="h-4 w-4" /> Admin Portal
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild>
           <Link to="/settings" className="cursor-pointer">
             <Settings className="h-4 w-4" /> Settings
@@ -85,6 +92,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { data: profile } = useQuery(profileQuery);
   const { data: wallet } = useQuery(walletQuery);
+  const isAdmin = Boolean(profile?.role?.includes("ADMIN"));
 
   return (
     <div className="min-h-screen">
@@ -120,6 +128,21 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
+          {isAdmin && (
+            <Link
+              to="/admin"
+              aria-current={pathname === "/admin" ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors border border-border/50",
+                pathname === "/admin"
+                  ? "bg-highlight text-highlight-foreground shadow-card font-semibold"
+                  : "text-muted-foreground hover:bg-card/60 hover:text-foreground",
+              )}
+            >
+              <ShieldCheck className={cn("h-[18px] w-[18px]", pathname === "/admin" ? "text-highlight-foreground" : "text-subtle-foreground")} aria-hidden="true" />
+              Admin Portal
+            </Link>
+          )}
         </nav>
 
         <div className="mt-auto">
@@ -163,7 +186,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Mobile bottom tabs */}
       <nav
-        className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-border bg-card/95 p-1.5 shadow-lift backdrop-blur-md md:hidden"
+        className={cn(
+          "fixed inset-x-3 bottom-3 z-40 grid rounded-2xl border border-border bg-card/95 p-1.5 shadow-lift backdrop-blur-md md:hidden",
+          isAdmin ? "grid-cols-6" : "grid-cols-5",
+        )}
         aria-label="Main navigation"
       >
         {NAV.map(({ to, label, Icon }) => {
@@ -183,6 +209,19 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           );
         })}
+        {isAdmin && (
+          <Link
+            to="/admin"
+            aria-current={pathname === "/admin" ? "page" : undefined}
+            className={cn(
+              "flex flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] font-medium transition-colors",
+              pathname === "/admin" ? "bg-highlight text-highlight-foreground font-semibold" : "text-muted-foreground",
+            )}
+          >
+            <ShieldCheck className="h-[18px] w-[18px]" aria-hidden="true" />
+            Admin
+          </Link>
+        )}
       </nav>
     </div>
   );

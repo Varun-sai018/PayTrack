@@ -18,7 +18,44 @@ export interface Profile {
   phone?: string | null;
   upi_id?: string | null;
   kyc_status?: string | null;
+  role?: string | null;
   created_at?: string | null;
+}
+
+export interface AdminUser {
+  id?: number | string;
+  userId: string;
+  email: string;
+  fullName: string;
+  phone?: string;
+  upiId?: string;
+  role: string;
+  kycStatus: string;
+  accountStatus?: string;
+  active?: boolean;
+  createdAt?: string;
+}
+
+export interface KycItem {
+  id: string;
+  userId: string;
+  docType: "AADHAAR" | "PAN" | "VOTER_ID" | string;
+  docLast4: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | string;
+  remarks?: string;
+  reviewedBy?: string;
+  submittedAt?: string;
+  reviewedAt?: string;
+  createdAt?: string;
+}
+
+export interface TransactionSummary {
+  date?: string;
+  totalTransactions: number;
+  totalVolume: number;
+  countByType: Record<string, number>;
+  volumeByType: Record<string, number>;
+  recentTransactions: Transaction[];
 }
 
 export interface Wallet {
@@ -211,6 +248,7 @@ export const api = {
           phone: data.phone || user.phone,
           upi_id: data.upiId || user.upiId,
           kyc_status: data.kycStatus || user.kycStatus,
+          role: data.role || user.role,
           created_at: data.createdAt,
         };
       }
@@ -224,6 +262,7 @@ export const api = {
       phone: user.phone,
       upi_id: user.upiId,
       kyc_status: user.kycStatus,
+      role: user.role,
       created_at: null,
     };
   },
@@ -386,5 +425,140 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ docType, docNumber }),
     });
+  },
+
+  // Admin APIs
+  async getAdminUsers(params?: { page?: number; size?: number; status?: string }): Promise<AdminUser[]> {
+    const page = params?.page ?? 0;
+    const size = params?.size ?? 50;
+    let url = `/api/auth/admin/users?page=${page}&size=${size}`;
+    if (params?.status) {
+      url += `&status=${encodeURIComponent(params.status)}`;
+    }
+    const data = await apiFetch<any>(url);
+    const list = Array.isArray(data) ? data : data?.content || [];
+    return list.map((u: any) => ({
+      id: u.id || u.userId,
+      userId: u.userId,
+      email: u.email,
+      fullName: u.fullName || u.full_name || "Unknown",
+      phone: u.phone,
+      upiId: u.upiId || u.upi_id,
+      role: u.role || "ROLE_USER",
+      kycStatus: u.kycStatus || "PENDING",
+      accountStatus: u.accountStatus || (u.active !== false ? "ACTIVE" : "SUSPENDED"),
+      active: u.active ?? true,
+      createdAt: u.createdAt || u.created_at,
+    }));
+  },
+
+  async updateUserStatus(userId: string, status: "ACTIVE" | "SUSPENDED" | "LOCKED" | string) {
+    return apiFetch<any>(`/api/auth/admin/users/${userId}/status?status=${encodeURIComponent(status)}`, {
+      method: "PUT",
+    });
+  },
+
+  async getAdminKyc(params?: { page?: number; size?: number; status?: string }): Promise<KycItem[]> {
+    const page = params?.page ?? 0;
+    const size = params?.size ?? 50;
+    let url = `/api/auth/admin/kyc?page=${page}&size=${size}`;
+    if (params?.status) {
+      url += `&status=${encodeURIComponent(params.status)}`;
+    }
+    const data = await apiFetch<any>(url);
+    const list = Array.isArray(data) ? data : data?.content || [];
+    return list.map((k: any) => ({
+      id: k.id,
+      userId: k.userId,
+      docType: k.docType,
+      docLast4: k.docLast4,
+      status: k.status,
+      remarks: k.remarks,
+      reviewedBy: k.reviewedBy,
+      submittedAt: k.submittedAt || k.createdAt,
+      reviewedAt: k.reviewedAt,
+      createdAt: k.createdAt,
+    }));
+  },
+
+  async reviewKyc(kycId: string, decision: "APPROVED" | "REJECTED", remarks?: string) {
+    let url = `/api/auth/admin/kyc/${kycId}/review?decision=${encodeURIComponent(decision)}`;
+    if (remarks) {
+      url += `&remarks=${encodeURIComponent(remarks)}`;
+    }
+    return apiFetch<any>(url, {
+      method: "PUT",
+    });
+  },
+
+  async getAdminTransactionSummary(from?: string, to?: string): Promise<TransactionSummary> {
+    let url = "/api/transactions/admin/summary";
+    const queryParts: string[] = [];
+    if (from) queryParts.push(`from=${encodeURIComponent(from)}`);
+    if (to) queryParts.push(`to=${encodeURIComponent(to)}`);
+    if (queryParts.length > 0) {
+      url += `?${queryParts.join("&")}`;
+    }
+    const data = await apiFetch<any>(url);
+    const recent = Array.isArray(data?.recentTransactions)
+      ? data.recentTransactions.map((t: any) => ({
+          id: String(t.id),
+          txn_ref: t.txnRef || t.txn_ref,
+          user_id: t.userId || t.user_id,
+          receiver_user_id: t.receiverUserId || t.receiver_user_id,
+          receiver_upi_id: t.receiverUpiId || t.receiver_upi_id,
+          sender_upi_id: t.senderUpiId || t.sender_upi_id,
+          type: t.type,
+          status: t.status,
+          amount: Number(t.amount),
+          description: t.description,
+          category: t.requestedCategory || t.category || "OTHER",
+          created_at: t.timestamp || t.createdAt || t.created_at || new Date().toISOString(),
+        }))
+      : [];
+
+    return {
+      date: data?.date,
+      totalTransactions: Number(data?.totalTransactions ?? 0),
+      totalVolume: Number(data?.totalVolume ?? 0),
+      countByType: data?.countByType || {},
+      volumeByType: data?.volumeByType || {},
+      recentTransactions: recent,
+    };
+  },
+
+  async getAdminAllTransactions(params?: {
+    page?: number;
+    size?: number;
+    status?: string;
+    type?: string;
+    from?: string;
+    to?: string;
+  }): Promise<{ rows: Transaction[]; total: number }> {
+    const page = params?.page ?? 0;
+    const size = params?.size ?? 50;
+    const q: string[] = [`page=${page}`, `size=${size}`];
+    if (params?.status) q.push(`status=${encodeURIComponent(params.status)}`);
+    if (params?.type) q.push(`type=${encodeURIComponent(params.type)}`);
+    if (params?.from) q.push(`from=${encodeURIComponent(params.from)}`);
+    if (params?.to) q.push(`to=${encodeURIComponent(params.to)}`);
+
+    const data = await apiFetch<any>(`/api/transactions/admin/all?${q.join("&")}`);
+    const items = Array.isArray(data) ? data : data?.content || [];
+    const rows: Transaction[] = items.map((t: any) => ({
+      id: String(t.id),
+      txn_ref: t.txnRef || t.txn_ref,
+      user_id: t.userId || t.user_id,
+      receiver_user_id: t.receiverUserId || t.receiver_user_id,
+      receiver_upi_id: t.receiverUpiId || t.receiver_upi_id,
+      sender_upi_id: t.senderUpiId || t.sender_upi_id,
+      type: t.type,
+      status: t.status,
+      amount: Number(t.amount),
+      description: t.description,
+      category: t.requestedCategory || t.category || "OTHER",
+      created_at: t.timestamp || t.createdAt || t.created_at || new Date().toISOString(),
+    }));
+    return { rows, total: rows.length };
   },
 };
